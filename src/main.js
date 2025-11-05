@@ -1,6 +1,8 @@
 import * as Freehand from "perfect-freehand";
 import RBush from "rbush";
 
+import OrderMaintenance from "./OrderMaintenance.js";
+
 (() => {
 
 let canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
@@ -24,6 +26,7 @@ const eraseControls = document.getElementById("eraseOptions");
 const panControls = document.getElementById("panOptions");
 
 const bush = new RBush();
+let orderMaintenance = new OrderMaintenance();
 let offsetX = 0;
 let offsetY = 0;
 let currentStroke = null;
@@ -150,11 +153,13 @@ function erase(minX, minY, maxX, maxY) {
 		}
 		terminateNewStroke();
 		if (!erased) continue;
-		bush.remove(stroke);
 		if (!eraseWholeStroke) for (const newStroke of newStrokes) {
+			newStroke.order = orderMaintenance.addNewAfter(stroke.order);
 			generateStroke(newStroke);
 			bush.insert(newStroke);
 		}
+		bush.remove(stroke);
+		orderMaintenance.remove(stroke.order);
 	}
 }
 
@@ -167,6 +172,10 @@ function render() {
 		maxX: -offsetX + canvasWidth,
 		minY: -offsetY,
 		maxY: -offsetY + canvasHeight
+	}).sort((a, b) => {
+		const aTag = a.order.tag;
+		const bTag = b.order.tag;
+		return aTag > bTag ? 1 : aTag === bTag ? 0 : -1;
 	})) {
 		context.save();
 		context.fillStyle = stroke.color;
@@ -228,7 +237,8 @@ const handlers = {
 			const stroke = {
 				size: drawSize,
 				color: drawColor,
-				basePath: currentStroke.basePath
+				basePath: currentStroke.basePath,
+				order: orderMaintenance.addNewAfter(orderMaintenance.tail)
 			};
 			generateStroke(stroke);
 			bush.insert(stroke);
@@ -307,6 +317,7 @@ canvas.addEventListener("pointerup", event => {
 document.addEventListener("keydown", event => {
 	if (event.key === "Delete") {
 		bush.clear();
+		orderMaintenance = new OrderMaintenance();
 		offsetX = 0;
 		offsetY = 0;
 		render();
