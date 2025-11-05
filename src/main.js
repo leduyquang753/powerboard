@@ -3,13 +3,13 @@ import RBush from "rbush";
 
 (() => {
 
-const canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
-const canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
+let canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
+let canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
 const canvas = document.createElement("canvas");
 canvas.width = canvasWidth;
 canvas.height = canvasHeight;
-canvas.style.width = canvasWidth + "px";
-canvas.style.height = canvasHeight + "px";
+canvas.style.width = "100vw";
+canvas.style.height = "100vh";
 canvas.style.touchAction = "none";
 document.body.appendChild(canvas);
 
@@ -262,6 +262,13 @@ document.addEventListener("keydown", event => {
 		offsetY = 0;
 		render();
 	}
+});
+window.addEventListener("resize", event => {
+	canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
+	canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
+	canvas.width = canvasWidth;
+	canvas.height = canvasHeight;
+	render();
 });
 
 })();
