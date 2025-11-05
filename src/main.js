@@ -18,13 +18,27 @@ context.strokeStyle = "black";
 context.fillStyle = "black";
 context.lineCap = "round";
 
+const modeSelector = document.getElementById("modeSelector");
+const drawControls = document.getElementById("drawOptions");
+const eraseControls = document.getElementById("eraseOptions");
+const panControls = document.getElementById("panOptions");
+
 const bush = new RBush();
 let offsetX = 0;
 let offsetY = 0;
 let currentStroke = null;
 
+let currentMode = 0;
+let drawSize = 4;
+let drawColor = "#000000";
+let eraseSize = 20;
+let eraseWholeStroke = false;
+
 function midpoint(p1, p2) {
-	return [p1[0] + (p2[0] - p1[0]) / 2, p1[1] + (p2[1] - p1[1]) / 2];
+	return [
+		p1[0] + (p2[0] - p1[0]) / 2,
+		p1[1] + (p2[1] - p1[1]) / 2
+	];
 }
 
 function interpolate(p1, p2, t) {
@@ -36,7 +50,7 @@ function interpolate(p1, p2, t) {
 }
 
 function generateStroke(stroke) {
-	const outline = Freehand.getStroke(stroke.basePath, {size: 4, streamline: 0, simulatePressure: false});
+	const outline = Freehand.getStroke(stroke.basePath, {size: stroke.size, streamline: 0, simulatePressure: false});
 
 	let minX = Infinity;
 	let maxX = -Infinity;
@@ -48,10 +62,10 @@ function generateStroke(stroke) {
 		minY = Math.min(minY, point[1]);
 		maxY = Math.max(maxY, point[1]);
 	}
-	stroke.minX = minX;
-	stroke.maxX = maxX;
-	stroke.minY = minY;
-	stroke.maxY = maxY;
+	stroke.minX = minX - drawSize;
+	stroke.maxX = maxX + drawSize;
+	stroke.minY = minY - drawSize;
+	stroke.maxY = maxY + drawSize;
 
 	const pointCount = outline.length;
 	const firstPoint = midpoint(outline[0], outline[pointCount - 1]);
@@ -81,7 +95,7 @@ function erase(minX, minY, maxX, maxY) {
 		let currentNewStrokePoints = [];
 		const terminateNewStroke = () => {
 			if (currentNewStrokePoints.length === 0) return;
-			newStrokes.push({basePath: currentNewStrokePoints});
+			newStrokes.push({size: stroke.size, color: stroke.color, basePath: currentNewStrokePoints});
 			currentNewStrokePoints = [];
 		};
 		const addNewStrokeSegment = (newPoint1, newPoint2) => {
@@ -137,7 +151,7 @@ function erase(minX, minY, maxX, maxY) {
 		terminateNewStroke();
 		if (!erased) continue;
 		bush.remove(stroke);
-		for (const newStroke of newStrokes) {
+		if (!eraseWholeStroke) for (const newStroke of newStrokes) {
 			generateStroke(newStroke);
 			bush.insert(newStroke);
 		}
@@ -153,34 +167,57 @@ function render() {
 		maxX: -offsetX + canvasWidth,
 		minY: -offsetY,
 		maxY: -offsetY + canvasHeight
-	})) context.fill(stroke.outline);
+	})) {
+		context.save();
+		context.fillStyle = stroke.color;
+		context.fill(stroke.outline);
+		context.restore();
+	}
 	if (currentStroke != null) {
 		generateStroke(currentStroke);
+		context.save();
+		context.fillStyle = currentStroke.color;
 		context.fill(currentStroke.outline);
+		context.restore();
 	}
 	context.restore();
 }
 
-let shiftDown = false;
-let ctrlDown = false;
-let pointerDown = false;
+function updateMode() {
+	for (const control of modeSelector.children) control.classList.remove("activeControl");
+	modeSelector.children[currentMode].classList.add("activeControl");
+	if (currentMode === 0) drawControls.classList.add("visibleControlGroup");
+	else drawControls.classList.remove("visibleControlGroup");
+	if (currentMode === 1) eraseControls.classList.add("visibleControlGroup");
+	else eraseControls.classList.remove("visibleControlGroup");
+	if (currentMode === 2) panControls.classList.add("visibleControlGroup");
+	else panControls.classList.remove("visibleControlGroup");
+}
 
+function updateDrawOptions() {
+	drawControls.children[0].innerText = `Color: ${drawColor}`;
+	drawControls.children[1].innerText = `Size: ${drawSize}`;
+}
+
+function updateEraseOptions() {
+	eraseControls.children[0].innerText = `Mode: ${eraseWholeStroke ? "whole" : "partial"}`;
+	eraseControls.children[1].innerText = `Size: ${eraseSize}`;
+}
+
+let pointerDown = false;
 let originalOffsetX = 0;
 let originalOffsetY = 0;
 let firstMouseX = 0;
 let firstMouseY = 0;
 
-const onKey = event => {
-	shiftDown = event.shiftKey;
-	ctrlDown = event.ctrlKey;
-};
-document.addEventListener("keydown", onKey);
-document.addEventListener("keyup", onKey);
-
 const handlers = {
 	draw: {
 		pointerdown: event => {
-			currentStroke = {basePath: [[event.offsetX - offsetX, event.offsetY - offsetY, event.pressure]]};
+			currentStroke = {
+				size: drawSize,
+				color: drawColor,
+				basePath: [[event.offsetX - offsetX, event.offsetY - offsetY, event.pressure]]
+			};
 			render();
 		},
 		pointermove: event => {
@@ -188,7 +225,11 @@ const handlers = {
 			render();
 		},
 		pointerup: event => {
-			const stroke = {basePath: currentStroke.basePath};
+			const stroke = {
+				size: drawSize,
+				color: drawColor,
+				basePath: currentStroke.basePath
+			};
 			generateStroke(stroke);
 			bush.insert(stroke);
 			currentStroke = null;
@@ -197,20 +238,22 @@ const handlers = {
 	},
 	erase: {
 		pointerdown: event => {
+			const halfEraseSize = eraseSize / 2;
 			erase(
-				event.offsetX - offsetX - 10,
-				event.offsetY - offsetY - 10,
-				event.offsetX - offsetX + 10,
-				event.offsetY - offsetY + 10
+				event.offsetX - offsetX - halfEraseSize,
+				event.offsetY - offsetY - halfEraseSize,
+				event.offsetX - offsetX + halfEraseSize,
+				event.offsetY - offsetY + halfEraseSize
 			);
 			render();
 		},
 		pointermove: event => {
+			const halfEraseSize = eraseSize / 2;
 			erase(
-				event.offsetX - offsetX - 10,
-				event.offsetY - offsetY - 10,
-				event.offsetX - offsetX + 10,
-				event.offsetY - offsetY + 10
+				event.offsetX - offsetX - halfEraseSize,
+				event.offsetY - offsetY - halfEraseSize,
+				event.offsetX - offsetX + halfEraseSize,
+				event.offsetY - offsetY + halfEraseSize
 			);
 			render();
 		},
@@ -233,15 +276,21 @@ const handlers = {
 		}
 	}
 };
+const modeMapping = [
+	["draw", "erase", "pan"],
+	["erase", "draw", "pan"],
+	["pan", "pan", "pan"]
+];
 let currentHandlers = null;
 
 canvas.addEventListener("pointerdown", event => {
 	event.preventDefault();
 	pointerDown = true;
-	currentHandlers
-		= shiftDown ? handlers.erase
-		: ctrlDown ? handlers.pan
-		: handlers.draw;
+	currentHandlers = handlers[modeMapping[currentMode][
+		event.getModifierState("Shift") ? 1
+		: event.getModifierState("Control") ? 2
+		: 0
+	]];
 	currentHandlers.pointerdown(event);
 });
 canvas.addEventListener("pointermove", event => {
@@ -261,6 +310,10 @@ document.addEventListener("keydown", event => {
 		offsetX = 0;
 		offsetY = 0;
 		render();
+	} else if (event.key === " ") {
+		offsetX = 0;
+		offsetY = 0;
+		render();
 	}
 });
 window.addEventListener("resize", event => {
@@ -270,5 +323,44 @@ window.addEventListener("resize", event => {
 	canvas.height = canvasHeight;
 	render();
 });
+for (let mode = 0; mode !== 3; ++mode) modeSelector.children[mode].addEventListener("click", event => {
+	currentMode = mode;
+	updateMode();
+});
+drawControls.children[0].addEventListener("click", event => {
+	const color = prompt("Enter color as 3-digit or 6-digit hexadecimal code:");
+	if (color === null || !color.match(/^[0-9A-F]{3}(?:[0-9A-F]{3})?$/i)) return;
+	drawColor = "#" + color.toUpperCase();
+	updateDrawOptions();
+});
+drawControls.children[1].addEventListener("click", event => {
+	const sizeString = prompt("Enter pen size:");
+	if (sizeString === null || sizeString === "") return;
+	const size = Number(sizeString);
+	if (Number.isNaN(size)) return;
+	drawSize = Math.max(1, Math.min(100, size));
+	updateDrawOptions();
+});
+eraseControls.children[0].addEventListener("click", event => {
+	eraseWholeStroke = !eraseWholeStroke;
+	updateEraseOptions();
+});
+eraseControls.children[1].addEventListener("click", event => {
+	const sizeString = prompt("Enter eraser size:");
+	if (sizeString === null || sizeString === "") return;
+	const size = Number(sizeString);
+	if (Number.isNaN(size)) return;
+	eraseSize = Math.max(1, Math.min(100, size));
+	updateEraseOptions();
+});
+panControls.children[0].addEventListener("click", event => {
+	offsetX = 0;
+	offsetY = 0;
+	render();
+});
+
+updateMode();
+updateDrawOptions();
+updateEraseOptions();
 
 })();
