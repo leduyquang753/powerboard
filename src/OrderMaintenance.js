@@ -63,7 +63,7 @@ export default class OrderMaintenance {
 		const rangeFirstTag = rangePrefix << level;
 		const rangeSize = 1n << level;
 		let currentNode = rangeFirst;
-		for (let i = 0n; i !== elementsInRange; ++i) {
+		for (let i = 0n; i < elementsInRange; ++i) {
 			currentNode.tag = rangeFirstTag + rangeSize * i / elementsInRange;
 			currentNode = currentNode.next;
 		}

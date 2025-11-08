@@ -1,6 +1,7 @@
 import * as Freehand from "perfect-freehand";
 import RBush from "rbush";
 
+import {simplifyStroke} from "./LineSimplification.js";
 import OrderMaintenance from "./OrderMaintenance.js";
 
 (() => {
@@ -65,10 +66,11 @@ function generateStroke(stroke) {
 		minY = Math.min(minY, point[1]);
 		maxY = Math.max(maxY, point[1]);
 	}
-	stroke.minX = minX - drawSize;
-	stroke.maxX = maxX + drawSize;
-	stroke.minY = minY - drawSize;
-	stroke.maxY = maxY + drawSize;
+	// Add 1-pixel padding for certainty that the stroke is visible when at the edge of the screen.
+	stroke.minX = minX - 1;
+	stroke.maxX = maxX + 1;
+	stroke.minY = minY - 1;
+	stroke.maxY = maxY + 1;
 
 	const pointCount = outline.length;
 	const firstPoint = midpoint(outline[0], outline[pointCount - 1]);
@@ -116,7 +118,7 @@ function erase(minX, minY, maxX, maxY) {
 			const q = [bx - minX, maxX - bx, by - minY, maxY - by];
 			let u1 = -Infinity;
 			let u2 = Infinity;
-			for (let j = 0; j !== 4; ++j) {
+			for (let j = 0; j < 4; ++j) {
 				if (p[j] === 0) {
 					if (q[j] < 0) {
 						u1 = 1;
@@ -237,7 +239,7 @@ const handlers = {
 			const stroke = {
 				size: drawSize,
 				color: drawColor,
-				basePath: currentStroke.basePath,
+				basePath: simplifyStroke(currentStroke.basePath),
 				order: orderMaintenance.addNewAfter(orderMaintenance.tail)
 			};
 			generateStroke(stroke);
@@ -334,7 +336,7 @@ window.addEventListener("resize", event => {
 	canvas.height = canvasHeight;
 	render();
 });
-for (let mode = 0; mode !== 3; ++mode) modeSelector.children[mode].addEventListener("click", event => {
+for (let mode = 0; mode < 3; ++mode) modeSelector.children[mode].addEventListener("click", event => {
 	currentMode = mode;
 	updateMode();
 });
