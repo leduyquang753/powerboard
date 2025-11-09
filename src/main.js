@@ -215,6 +215,10 @@ function updateEraseOptions() {
 	eraseControls.children[1].innerText = `Size: ${eraseSize}`;
 }
 
+function scaledPointerOffset(event) {
+	return [event.offsetX * window.devicePixelRatio, event.offsetY * window.devicePixelRatio];
+}
+
 let pointerDown = false;
 let originalOffsetX = 0;
 let originalOffsetY = 0;
@@ -223,19 +227,19 @@ let firstMouseY = 0;
 
 const handlers = {
 	draw: {
-		pointerdown: event => {
+		pointerdown: (event, pointerX, pointerY) => {
 			currentStroke = {
 				size: drawSize,
 				color: drawColor,
-				basePath: [[event.offsetX - offsetX, event.offsetY - offsetY, event.pressure]]
+				basePath: [[pointerX - offsetX, pointerY - offsetY, event.pressure]]
 			};
 			render();
 		},
-		pointermove: event => {
-			currentStroke.basePath.push([event.offsetX - offsetX, event.offsetY - offsetY, event.pressure]);
+		pointermove: (event, pointerX, pointerY) => {
+			currentStroke.basePath.push([pointerX - offsetX, pointerY - offsetY, event.pressure]);
 			render();
 		},
-		pointerup: event => {
+		pointerup: (event, pointerX, pointerY) => {
 			const stroke = {
 				size: drawSize,
 				color: drawColor,
@@ -249,42 +253,42 @@ const handlers = {
 		}
 	},
 	erase: {
-		pointerdown: event => {
+		pointerdown: (event, pointerX, pointerY) => {
 			const halfEraseSize = eraseSize / 2;
 			erase(
-				event.offsetX - offsetX - halfEraseSize,
-				event.offsetY - offsetY - halfEraseSize,
-				event.offsetX - offsetX + halfEraseSize,
-				event.offsetY - offsetY + halfEraseSize
+				pointerX - offsetX - halfEraseSize,
+				pointerY - offsetY - halfEraseSize,
+				pointerX - offsetX + halfEraseSize,
+				pointerY - offsetY + halfEraseSize
 			);
 			render();
 		},
-		pointermove: event => {
+		pointermove: (event, pointerX, pointerY) => {
 			const halfEraseSize = eraseSize / 2;
 			erase(
-				event.offsetX - offsetX - halfEraseSize,
-				event.offsetY - offsetY - halfEraseSize,
-				event.offsetX - offsetX + halfEraseSize,
-				event.offsetY - offsetY + halfEraseSize
+				pointerX - offsetX - halfEraseSize,
+				pointerY - offsetY - halfEraseSize,
+				pointerX - offsetX + halfEraseSize,
+				pointerY - offsetY + halfEraseSize
 			);
 			render();
 		},
-		pointerup: event => {
+		pointerup: (event, pointerX, pointerY) => {
 		}
 	},
 	pan: {
-		pointerdown: event => {
+		pointerdown: (event, pointerX, pointerY) => {
 			originalOffsetX = offsetX;
 			originalOffsetY = offsetY;
-			firstMouseX = event.offsetX;
-			firstMouseY = event.offsetY;
+			firstMouseX = pointerX;
+			firstMouseY = pointerY;
 		},
-		pointermove: event => {
-			offsetX = originalOffsetX - firstMouseX + event.offsetX;
-			offsetY = originalOffsetY - firstMouseY + event.offsetY;
+		pointermove: (event, pointerX, pointerY) => {
+			offsetX = originalOffsetX - firstMouseX + pointerX;
+			offsetY = originalOffsetY - firstMouseY + pointerY;
 			render();
 		},
-		pointerup: event => {
+		pointerup: (event, pointerX, pointerY) => {
 		}
 	}
 };
@@ -303,18 +307,18 @@ canvas.addEventListener("pointerdown", event => {
 		: event.getModifierState("Control") ? 2
 		: 0
 	]];
-	currentHandlers.pointerdown(event);
+	currentHandlers.pointerdown(event, ...scaledPointerOffset(event));
 });
 canvas.addEventListener("pointermove", event => {
 	event.preventDefault();
 	if (!pointerDown) return;
-	currentHandlers.pointermove(event);
+	currentHandlers.pointermove(event, ...scaledPointerOffset(event));
 });
 canvas.addEventListener("pointerup", event => {
 	event.preventDefault();
 	if (!pointerDown) return;
 	pointerDown = false;
-	currentHandlers.pointerup(event);
+	currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 });
 document.addEventListener("keydown", event => {
 	if (event.key === "Delete") {
