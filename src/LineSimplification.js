@@ -48,7 +48,15 @@ function simplifyPolyline(points, distanceFunction, tolerance) {
 			if (includeLastPoint) result.push(end - 1);
 		}
 	}
-	return result;
+	const deduplicatedResult = [];
+	let lastPoint = null;
+	for (const index of result) {
+		const point = points[index];
+		if (lastPoint !== null && point[0] === lastPoint[0] && point[1] === lastPoint[1]) continue;
+		deduplicatedResult.push(index);
+		lastPoint = point;
+	}
+	return deduplicatedResult;
 }
 
 const weightTolerance = 0.1;
@@ -65,10 +73,11 @@ export function simplifyStroke(points) {
 	const firstStageIndices = simplifyPolyline(firstStagePoints, verticalDistance, weightTolerance);
 	const firstStageIndexCount = firstStageIndices.length;
 	const result = [];
+	const lastPoint = null;
 	for (let i = 0; i < firstStageIndexCount - 1; ++i) {
 		const subpoints = points.slice(firstStageIndices[i], firstStageIndices[i + 1] + 1);
 		const secondStageIndices = simplifyPolyline(subpoints, shortestDistance, positionTolerance);
-		if (i !== 0) secondStageIndices.unshift();
+		if (i !== 0) secondStageIndices.shift();
 		result.push(...secondStageIndices.map(index => subpoints[index]));
 	}
 	return result;

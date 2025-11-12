@@ -9,6 +9,7 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
+		"bezier-js": "^6.1.4",
 		"perfect-freehand": "^1.2.2",
 		"rbush": "^4.0.1"
 	},
