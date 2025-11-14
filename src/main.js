@@ -221,7 +221,7 @@ const handlers = {
 				color: drawColor,
 				basePath: currentStroke.basePath.length < 3
 					? currentStroke.basePath
-					: generateBezierSpline(simplifyStroke(currentStroke.basePath)),
+					: generateBezierSpline(simplifyStroke(currentStroke.basePath, currentStroke.size)),
 				order: orderMaintenance.addNewAfter(orderMaintenance.tail)
 			};
 			generateStroke(stroke);

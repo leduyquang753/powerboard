@@ -1,3 +1,11 @@
+function interpolate(p1, p2, t) {
+	return [
+		p1[0] + (p2[0] - p1[0]) * t,
+		p1[1] + (p2[1] - p1[1]) * t,
+		p1[2] + (p2[2] - p1[2]) * t
+	];
+}
+
 function squaredDistance(point1, point2) {
 	const dx = point1[0] - point2[0];
 	const dy = point1[1] - point2[1];
@@ -62,7 +70,23 @@ function simplifyPolyline(points, distanceFunction, tolerance) {
 const weightTolerance = 0.1;
 const positionTolerance = 1;
 
-export function simplifyStroke(points) {
+// Heuristic: We expect the pointer to move slowly when approaching a corner. If the distance between the candidate
+// corner point and the original sampled point before it is not greater than this, then it is sufficiently slow to
+// be detected as a corner.
+// A caveat is when the pointer moves fast diagonally towards an edge of the screen, it creates an angle but the corner
+// will be ruled out by this heuristic. In the future, a more robust algorithm might be employed, such as IStraw
+// (https://doi.org/10.1145/1572741.1572759).
+const maxSharpIncomingDistance = 2;
+const maxSharpIncomingDistanceSquared = maxSharpIncomingDistance * maxSharpIncomingDistance;
+// For sufficiently small and large angles the Catmull–Rom interpolation is satisfactory without adding extra points.
+const minSharpAngle = 15 / 180 * Math.PI;
+const maxSharpCosine = Math.cos(minSharpAngle);
+const maxSharpAngle = 120 / 180 * Math.PI;
+const minSharpCosine = Math.cos(maxSharpAngle);
+
+export function simplifyStroke(points, strokeSize) {
+	// First stage: determine subpolylines where the weight changes nearly linearly.
+	// This ensures points with important weight changes are not removed.
 	const firstStagePoints = [[0, points[0][2]]];
 	let cumulativeDistance = 0;
 	const pointCount = points.length;
@@ -72,13 +96,58 @@ export function simplifyStroke(points) {
 	}
 	const firstStageIndices = simplifyPolyline(firstStagePoints, verticalDistance, weightTolerance);
 	const firstStageIndexCount = firstStageIndices.length;
-	const result = [];
-	const lastPoint = null;
+
+	// Second stage: simplify each subpolyline from the first stage.
+	const secondStagePoints = [];
 	for (let i = 0; i < firstStageIndexCount - 1; ++i) {
-		const subpoints = points.slice(firstStageIndices[i], firstStageIndices[i + 1] + 1);
+		const firstStageIndex = firstStageIndices[i];
+		const subpoints = points.slice(firstStageIndex, firstStageIndices[i + 1] + 1);
 		const secondStageIndices = simplifyPolyline(subpoints, shortestDistance, positionTolerance);
-		if (i !== 0) secondStageIndices.shift();
-		result.push(...secondStageIndices.map(index => subpoints[index]));
+		for (let j = (i === 0 ? 0 : 1); j < secondStageIndices.length; ++j) {
+			const secondStageIndex = secondStageIndices[j];
+			const subpoint = subpoints[secondStageIndex];
+			subpoint.originalIndex = firstStageIndex + secondStageIndex;
+			secondStagePoints.push(subpoint);
+		}
 	}
+
+	// Third stage: process sharp corners.
+	// Because the stroke will be fitted using a Catmull–Rom spline, there will be bulges on the sides of sharp corners
+	// that the user intends to be straight. This is remedied by inserting two extra points close to the corner to guide
+	// the edges in a nearly straight path towards the corner.
+	const sharpCornerMinEdgeLength = strokeSize * 2;
+	const secondStagePointCount = secondStagePoints.length;
+	const result = [secondStagePoints[0]];
+	for (let i = 1; i < secondStagePointCount - 1; ++i) {
+		const currentPoint = secondStagePoints[i];
+
+		const originalPointBefore = points[secondStagePoints[i].originalIndex - 1];
+		const incomingDx = originalPointBefore[0] - currentPoint[0];
+		const incomingDy = originalPointBefore[1] - currentPoint[1];
+		const incomingLengthSquared = incomingDx * incomingDx + incomingDy * incomingDy;
+
+		const dx1 = secondStagePoints[i - 1][0] - secondStagePoints[i][0];
+		const dy1 = secondStagePoints[i - 1][1] - secondStagePoints[i][1];
+		const dx2 = secondStagePoints[i + 1][0] - secondStagePoints[i][0];
+		const dy2 = secondStagePoints[i + 1][1] - secondStagePoints[i][1];
+		const length1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+		const length2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+		const angleCosine = (dx1 * dx2 + dy1 * dy2) / (length1 * length2);
+		if (
+			incomingLengthSquared > maxSharpIncomingDistanceSquared
+			|| length1 < sharpCornerMinEdgeLength || length2 < sharpCornerMinEdgeLength
+			|| angleCosine < minSharpCosine || angleCosine > maxSharpCosine
+		) {
+			result.push(secondStagePoints[i]);
+			continue;
+		}
+		result.push(
+			interpolate(secondStagePoints[i - 1], secondStagePoints[i], 1 - strokeSize / length1),
+			secondStagePoints[i],
+			interpolate(secondStagePoints[i], secondStagePoints[i + 1], strokeSize / length2)
+		);
+	}
+	if (secondStagePointCount > 1) result.push(secondStagePoints[secondStagePointCount - 1]);
+	for (const point of result) delete point.originalIndex;
 	return result;
 }

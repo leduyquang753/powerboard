@@ -176,7 +176,7 @@ export function generateOutlineAndBoundingBox(stroke) {
 				}
 				return [0, 1];
 			})();
-			path += `L${endPoint.x + endNormal[0] * endOffset} ${endPoint.y + endNormal[0] * endOffset}`;
+			path += `L${endPoint.x + endNormal[0] * endOffset} ${endPoint.y + endNormal[1] * endOffset}`;
 		}
 	}
 	const lastSegment = spline[segmentCount - 1];
@@ -240,7 +240,7 @@ export function generateOutlineAndBoundingBox(stroke) {
 				}
 				return [0, 1];
 			})();
-			path += `L${endPoint.x + endNormal[0] * endOffset} ${endPoint.y + endNormal[0] * endOffset}`;
+			path += `L${endPoint.x + endNormal[0] * endOffset} ${endPoint.y + endNormal[1] * endOffset}`;
 		}
 	}
 	path += "Z";
