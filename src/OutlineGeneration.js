@@ -135,10 +135,10 @@ export function generateOutlineAndBoundingBox(stroke) {
 		+ ` ${firstSegmentPoints[0].x + firstNormal[0] * firstOffset}`
 		+ ` ${firstSegmentPoints[0].y + firstNormal[1] * firstOffset}`;
 	let boundingBox = {
-		minX: firstSegmentPoints[0].x - firstOffset,
-		minY: firstSegmentPoints[0].x - firstOffset,
-		maxX: firstSegmentPoints[1].x + firstOffset,
-		maxY: firstSegmentPoints[1].x + firstOffset
+		minX: firstSegmentPoints[0].x - halfStrokeSize,
+		minY: firstSegmentPoints[0].x - halfStrokeSize,
+		maxX: firstSegmentPoints[1].x + halfStrokeSize,
+		maxY: firstSegmentPoints[1].x + halfStrokeSize
 	};
 	for (let i = 0; i < segmentCount; ++i) {
 		const {bezier, startWeight, endWeight} = spline[i];
@@ -160,7 +160,11 @@ export function generateOutlineAndBoundingBox(stroke) {
 				+ ` ${offsetPoints[3].x} ${offsetPoints[3].y}`;
 			const subBoundingBox = subcurve.bbox();
 			updateBoundingBox(
-				boundingBox, subBoundingBox.x.min, subBoundingBox.y.min, subBoundingBox.x.max, subBoundingBox.y.max
+				boundingBox,
+				subBoundingBox.x.min - halfStrokeSize,
+				subBoundingBox.y.min - halfStrokeSize,
+				subBoundingBox.x.max - halfStrokeSize,
+				subBoundingBox.y.max - halfStrokeSize
 			);
 			lastT = subcurve._t2;
 		}
@@ -197,8 +201,8 @@ export function generateOutlineAndBoundingBox(stroke) {
 		+ ` ${lastSegmentPoints[3].y - lastNormal[1] * lastOffset}`;
 	updateBoundingBox(
 		boundingBox,
-		lastSegmentPoints[3].x - lastOffset, lastSegmentPoints[3].y - lastOffset,
-		lastSegmentPoints[3].x + lastOffset, lastSegmentPoints[3].y + lastOffset
+		lastSegmentPoints[3].x - halfStrokeSize, lastSegmentPoints[3].y - halfStrokeSize,
+		lastSegmentPoints[3].x + halfStrokeSize, lastSegmentPoints[3].y + halfStrokeSize
 	);
 	for (let i = segmentCount - 1; i >= 0; --i) {
 		const {bezier: originalBezier, startWeight, endWeight} = spline[i];
@@ -224,7 +228,11 @@ export function generateOutlineAndBoundingBox(stroke) {
 				+ ` ${offsetPoints[3].x} ${offsetPoints[3].y}`;
 			const subBoundingBox = subcurve.bbox();
 			updateBoundingBox(
-				boundingBox, subBoundingBox.x.min, subBoundingBox.y.min, subBoundingBox.x.max, subBoundingBox.y.max
+				boundingBox,
+				subBoundingBox.x.min - halfStrokeSize,
+				subBoundingBox.y.min - halfStrokeSize,
+				subBoundingBox.x.max - halfStrokeSize,
+				subBoundingBox.y.max - halfStrokeSize
 			);
 			lastT = subcurve._t2;
 		}

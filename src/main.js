@@ -4,19 +4,29 @@ import RBush from "rbush";
 import {simplifyStroke} from "./LineSimplification.js";
 import OrderMaintenance from "./OrderMaintenance.js";
 import {generateBezierSpline, generateOutlineAndBoundingBox} from "./OutlineGeneration.js";
+import PageBackground from "./PageBackground.js";
 import {eraseStroke} from "./StrokeErasure.js";
 
 (() => {
 
 let canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
 let canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
+
+const backgroundCanvas = document.createElement("canvas");
+backgroundCanvas.width = canvasWidth;
+backgroundCanvas.height = canvasHeight;
+backgroundCanvas.style.width = "100vw";
+backgroundCanvas.style.height = "100vh";
+document.getElementById("backgroundCanvas").appendChild(backgroundCanvas);
+const pageBackground = new PageBackground(backgroundCanvas);
+
 const canvas = document.createElement("canvas");
 canvas.width = canvasWidth;
 canvas.height = canvasHeight;
 canvas.style.width = "100vw";
 canvas.style.height = "100vh";
 canvas.style.touchAction = "none";
-document.body.appendChild(canvas);
+document.getElementById("mainCanvas").appendChild(canvas);
 
 const context = canvas.getContext("2d");
 context.strokeStyle = "black";
@@ -140,6 +150,12 @@ function render() {
 		context.save();
 		context.fillStyle = stroke.color;
 		context.fill(stroke.outline);
+		context.fillStyle = "rgb(255 0 0 / 50%)";
+		/*
+		for (const point of stroke.originalPoints) context.fillRect(
+			point[0] - 1, point[1] - 1, 3, 3
+		);
+		*/
 		/*
 		context.strokeStyle = stroke.color;
 		context.lineWidth = stroke.size;
@@ -219,6 +235,7 @@ const handlers = {
 				isSimple: currentStroke.basePath.length < 3,
 				size: drawSize,
 				color: drawColor,
+				originalPoints: currentStroke.basePath,
 				basePath: currentStroke.basePath.length < 3
 					? currentStroke.basePath
 					: generateBezierSpline(simplifyStroke(currentStroke.basePath, currentStroke.size)),
@@ -264,6 +281,7 @@ const handlers = {
 		pointermove: (event, pointerX, pointerY) => {
 			offsetX = originalOffsetX - firstMouseX + pointerX;
 			offsetY = originalOffsetY - firstMouseY + pointerY;
+			pageBackground.render(offsetX, offsetY);
 			render();
 		},
 		pointerup: (event, pointerX, pointerY) => {
@@ -311,10 +329,12 @@ document.addEventListener("keydown", event => {
 		orderMaintenance = new OrderMaintenance();
 		offsetX = 0;
 		offsetY = 0;
+		pageBackground.render(offsetX, offsetY);
 		render();
 	} else if (event.key === " ") {
 		offsetX = 0;
 		offsetY = 0;
+		pageBackground.render(offsetX, offsetY);
 		render();
 	}
 });
@@ -323,6 +343,8 @@ window.addEventListener("resize", event => {
 	canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
 	canvas.width = canvasWidth;
 	canvas.height = canvasHeight;
+	pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
+	pageBackground.render(offsetX, offsetY);
 	render();
 });
 for (let mode = 0; mode < 3; ++mode) modeSelector.children[mode].addEventListener("click", event => {
@@ -358,11 +380,15 @@ eraseControls.children[1].addEventListener("click", event => {
 panControls.children[0].addEventListener("click", event => {
 	offsetX = 0;
 	offsetY = 0;
+	pageBackground.render(offsetX, offsetY);
 	render();
 });
 
 updateMode();
 updateDrawOptions();
 updateEraseOptions();
+
+pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
+pageBackground.render(offsetX, offsetY);
 
 })();

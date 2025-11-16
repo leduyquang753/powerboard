@@ -6,6 +6,14 @@
 	font-family: system-ui, sans-serif;
 }
 
+.canvas {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+}
+
 .controls {
 	position: absolute;
 	bottom: 0;
