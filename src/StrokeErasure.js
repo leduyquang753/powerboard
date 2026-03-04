@@ -156,9 +156,9 @@ export function eraseStroke(stroke, minX, minY, maxX, maxY) {
 	if (stroke.isSimple) {
 		newStrokes = erasePointOrLine(stroke.basePath, minX, minY, maxX, maxY)
 	} else {
-		const eraseResults = stroke.basePath.map(segment => eraseBezier(segment, minX, minY, maxX, maxY));
+		const eraseResults = stroke.spline.map(segment => eraseBezier(segment, minX, minY, maxX, maxY));
 		if (eraseResults.every(result => result === null)) return null;
-		const newSegments = eraseResults.flatMap((result, i) => result ?? stroke.basePath[i]);
+		const newSegments = eraseResults.flatMap((result, i) => result ?? stroke.spline[i]);
 		newStrokes = [];
 		let lastPoint = null;
 		let lastStroke = null;
@@ -178,6 +178,7 @@ export function eraseStroke(stroke, minX, minY, maxX, maxY) {
 		isSimple: stroke.isSimple,
 		size: stroke.size,
 		color: stroke.color,
-		basePath: newStroke
+		basePath: newStroke,
+		spline: newStroke
 	}));
 }

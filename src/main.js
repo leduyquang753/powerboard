@@ -1,9 +1,8 @@
-import * as Freehand from "perfect-freehand";
 import RBush from "rbush";
 
-import {simplifyStroke} from "./LineSimplification.js";
+import {LineSimplifier} from "./LineSimplification.js";
 import OrderMaintenance from "./OrderMaintenance.js";
-import {generateBezierSpline, generateOutlineAndBoundingBox} from "./OutlineGeneration.js";
+import {generateOutlineAndBoundingBox} from "./OutlineGeneration.js";
 import PageBackground from "./PageBackground.js";
 import {eraseStroke} from "./StrokeErasure.js";
 
@@ -66,57 +65,22 @@ function interpolate(p1, p2, t) {
 }
 
 function generateStroke(stroke) {
-	if (stroke.isDraft) {
-		const outline = Freehand.getStroke(stroke.basePath, {
-			size: stroke.size / 2, streamline: 0, thinning: 1, simulatePressure: false
-		});
-
-		let minX = Infinity;
-		let maxX = -Infinity;
-		let minY = Infinity;
-		let maxY = -Infinity;
-		for (const point of outline) {
-			minX = Math.min(minX, point[0]);
-			maxX = Math.max(maxX, point[0]);
-			minY = Math.min(minY, point[1]);
-			maxY = Math.max(maxY, point[1]);
-		}
-		// Add 1-pixel padding for certainty that the stroke is visible when at the edge of the screen.
-		stroke.minX = minX - 1;
-		stroke.maxX = maxX + 1;
-		stroke.minY = minY - 1;
-		stroke.maxY = maxY + 1;
-
-		const pointCount = outline.length;
-		const firstPoint = midpoint(outline[0], outline[pointCount - 1]);
-		const secondPoint = midpoint(outline[0], outline[1]);
-		let path = (
-			`M${firstPoint[0]} ${firstPoint[1]}`
-			+ `Q${outline[0][0]} ${outline[0][1]} ${secondPoint[0]} ${secondPoint[1]}`
-		);
-		for (let i = 1; i < pointCount - 1; ++i) {
-			const newPoint = midpoint(outline[i], outline[i + 1]);
-			path += `T${newPoint[0]} ${newPoint[1]}`;
-		}
-		path += `T${firstPoint[0]} ${firstPoint[1]}Z`;
-		stroke.outline = new Path2D(path);
-	} else {
-		const generated = generateOutlineAndBoundingBox(stroke);
-		stroke.outline = new Path2D(generated.pathString);
-		stroke.minX = generated.minX;
-		stroke.minY = generated.minY;
-		stroke.maxX = generated.maxX;
-		stroke.maxY = generated.maxY;
-		/*
-		const spline = generateBezierSpline(stroke.basePath);
-		let path = `M${spline[0].controlPoints[0][0]} ${spline[0].controlPoints[0][1]}`;
-		for (const segment of spline) {
-			const points = segment.controlPoints;
-			path += `C${points[1][0]} ${points[1][1]} ${points[2][0]} ${points[2][1]} ${points[3][0]} ${points[3][1]}`;
-		}
-		stroke.outline = new Path2D(path);
-		*/
+	const generated = generateOutlineAndBoundingBox(stroke);
+	if (stroke.isFinal) console.log(generated.pathString);
+	stroke.outline = new Path2D(generated.pathString);
+	stroke.minX = generated.minX;
+	stroke.minY = generated.minY;
+	stroke.maxX = generated.maxX;
+	stroke.maxY = generated.maxY;
+	/*
+	const spline = generateBezierSpline(stroke.basePath);
+	let path = `M${spline[0].controlPoints[0][0]} ${spline[0].controlPoints[0][1]}`;
+	for (const segment of spline) {
+		const points = segment.controlPoints;
+		path += `C${points[1][0]} ${points[1][1]} ${points[2][0]} ${points[2][1]} ${points[3][0]} ${points[3][1]}`;
 	}
+	stroke.outline = new Path2D(path);
+	*/
 }
 
 function erase(minX, minY, maxX, maxY) {
@@ -137,7 +101,7 @@ function render() {
 	context.clearRect(0, 0, canvasWidth, canvasHeight);
 	context.save();
 	context.translate(offsetX, offsetY);
-	for (const stroke of bush.search({
+	for (const stroke of /*bush.all()*/bush.search({
 		minX: -offsetX,
 		maxX: -offsetX + canvasWidth,
 		minY: -offsetY,
@@ -147,11 +111,22 @@ function render() {
 		const bTag = b.order.tag;
 		return aTag > bTag ? 1 : aTag === bTag ? 0 : -1;
 	})) {
+		//if (stroke.simplifier.workingInputPoints.length === 1) continue;
 		context.save();
+		/*
+		context.strokeStyle = stroke.color;
+		context.lineWidth = stroke.size;
+		const curves = stroke.simplifier.polycurve;
+		context.beginPath();
+		context.moveTo(curves[0][0][0], curves[0][0][1]);
+		for (const curve of curves)
+			context.bezierCurveTo(...curve.slice(1).flatMap(p => p));
+		context.stroke();
+		*/
 		context.fillStyle = stroke.color;
 		context.fill(stroke.outline);
-		context.fillStyle = "rgb(255 0 0 / 50%)";
 		/*
+		context.fillStyle = "rgb(255 0 0 / 50%)";
 		for (const point of stroke.originalPoints) context.fillRect(
 			point[0] - 1, point[1] - 1, 3, 3
 		);
@@ -173,7 +148,18 @@ function render() {
 	}
 	if (currentStroke != null) {
 		generateStroke(currentStroke);
+		const stroke = currentStroke;
 		context.save();
+		/*
+		context.strokeStyle = stroke.color;
+		context.lineWidth = stroke.size;
+		const curves = stroke.simplifier.polycurve;
+		context.beginPath();
+		context.moveTo(curves[0][0][0], curves[0][0][1]);
+		for (const curve of curves)
+			context.bezierCurveTo(...curve.slice(1).flatMap(p => p));
+		context.stroke();
+		*/
 		context.fillStyle = currentStroke.color;
 		context.fill(currentStroke.outline);
 		context.restore();
@@ -218,29 +204,51 @@ const handlers = {
 	draw: {
 		pointerdown: (event, pointerX, pointerY, pressure) => {
 			currentStroke = {
-				isDraft: true,
+				isDraft: false,
+				isSimple: true,
 				size: drawSize,
 				color: drawColor,
-				basePath: [[pointerX - offsetX, pointerY - offsetY, pressure]]
+				basePath: [[pointerX - offsetX, pointerY - offsetY, pressure]],
+				simplifier: new LineSimplifier([pointerX - offsetX, pointerY - offsetY, pressure], drawSize)
 			};
+			currentStroke.spline = [...currentStroke.simplifier.spline.map(s => ({...s}))];
 			render();
 		},
 		pointermove: (event, pointerX, pointerY, pressure) => {
 			currentStroke.basePath.push([pointerX - offsetX, pointerY - offsetY, pressure]);
+			currentStroke.simplifier.addPoint([pointerX - offsetX, pointerY - offsetY, pressure]);
+			const newSpline = currentStroke.simplifier.spline;
+			if (newSpline.length === currentStroke.spline.length) {
+				currentStroke.spline[currentStroke.spline.length - 1] = {...newSpline[newSpline.length - 1]};
+			} else {
+				currentStroke.spline.push({...newSpline[newSpline.length - 1]});
+			}
+			currentStroke.isSimple = currentStroke.basePath.length < 3;
 			render();
 		},
 		pointerup: (event, pointerX, pointerY) => {
-			const stroke = {
+			currentStroke.isFinal = true;
+			currentStroke.order = orderMaintenance.addNewAfter(orderMaintenance.tail);
+			const stroke = currentStroke;/*{
 				isDraft: false,
-				isSimple: currentStroke.basePath.length < 3,
 				size: drawSize,
 				color: drawColor,
-				originalPoints: currentStroke.basePath,
-				basePath: currentStroke.basePath.length < 3
-					? currentStroke.basePath
-					: generateBezierSpline(simplifyStroke(currentStroke.basePath, currentStroke.size)),
+				basePath: currentStroke.basePath,
 				order: orderMaintenance.addNewAfter(orderMaintenance.tail)
 			};
+			*/
+			/*
+			const polycurve = currentStroke.simplifier.spline;
+			let c = polycurve[0].bezier.points;
+			let s = `M ${c[0].x} ${c[0].y} C ${c[1].x} ${c[1].y} ${c[2].x} ${c[2].y} ${c[3].x} ${c[3].y}`;
+			for (let i = 1; i < polycurve.length; ++i) {
+				let c = polycurve[i].bezier.points;
+				s += ` ${c[1].x} ${c[1].y} ${c[2].x} ${c[2].y} ${c[3].x} ${c[3].y}`;
+			}
+			console.log(s);
+			*/
+			console.log(`${currentStroke.simplifier.spline.length} segments / ${currentStroke.basePath.length} points.`);
+			currentStroke.spline = [...currentStroke.simplifier.spline.map(s => ({...s}))];
 			generateStroke(stroke);
 			bush.insert(stroke);
 			currentStroke = null;
@@ -374,7 +382,7 @@ eraseControls.children[1].addEventListener("click", event => {
 	if (sizeString === null || sizeString === "") return;
 	const size = Number(sizeString);
 	if (Number.isNaN(size)) return;
-	eraseSize = Math.max(1, Math.min(100, size));
+	eraseSize = Math.max(1, Math.min(1000, size));
 	updateEraseOptions();
 });
 panControls.children[0].addEventListener("click", event => {

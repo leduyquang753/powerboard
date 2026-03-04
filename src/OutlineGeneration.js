@@ -1,17 +1,33 @@
 import {Bezier} from "bezier-js";
 
-const catmullRomTension = 0.5;
-const bezierConversionFactor = 1 / (6 * catmullRomTension);
+import {findBezierCriticalPoints} from "./BezierCriticalPointFinder.js";
 
-// Estimate the point before the first drawn point of a Catmull–Rom spline, based on the first 3 given points.
-function estimateInitialPoint(p1, p2, p3) {
-	return [p1[0] - (p2[0] - p1[0]) / 10, p1[1] - (p2[1] - p1[1]) / 10];
+const DISCONNECTION_THRESHOLD = 1e-6;
+
+function bezierBeginTangent(bezier) {
+	const points = bezier.points;
+	for (let i = 1; i < 4; ++i) {
+		const dx = points[i].x - points[0].x;
+		const dy = points[i].y - points[0].y;
+		const length = Math.sqrt(dx * dx + dy * dy);
+		if (length !== 0) return [dx / length, dy / length];
+	}
+	return [0, 1];
 }
 
-function knotInterval(p1, p2) {
-	const dx = p2[0] - p1[0];
-	const dy = p2[1] - p1[1];
-	return (dx * dx + dy * dy) ** 0.25;
+function bezierEndTangent(bezier) {
+	const points = bezier.points;
+	for (let i = 2; i >= 0; --i) {
+		const dx = points[3].x - points[i].x;
+		const dy = points[3].y - points[i].y;
+		const length = Math.sqrt(dx * dx + dy * dy);
+		if (length !== 0) return [dx / length, dy / length];
+	}
+	return [0, 1];
+}
+
+function normalVector(vector) {
+	return [-vector[1], vector[0]];
 }
 
 function updateBoundingBox(current, incomingMinX, incomingMinY, incomingMaxX, incomingMaxY) {
@@ -21,57 +37,136 @@ function updateBoundingBox(current, incomingMinX, incomingMinY, incomingMaxX, in
 	current.maxY = Math.max(current.maxY, incomingMaxY);
 }
 
-// Use Catmull–Rom spline interpolation to generate a cubic Bezier spline through the given points.
-export function generateBezierSpline(rawPoints) {
-	let pointCount = rawPoints.length;
-	const points = [
-		estimateInitialPoint(rawPoints[0], rawPoints[1], rawPoints[2]),
-		...rawPoints,
-		estimateInitialPoint(rawPoints[pointCount - 1], rawPoints[pointCount - 2], rawPoints[pointCount - 3])
-	];
-	pointCount += 2;
-	const result = [];
-	for (let i = 1; i < pointCount - 2; ++i) {
-		const t1 = knotInterval(points[i - 1], points[i]);
-		const t2 = t1 + knotInterval(points[i], points[i + 1]);
-		const t3 = t2 + knotInterval(points[i + 1], points[i + 2]);
-		const c1 = (t2 - t1) / t2;
-		const c2 = t1 / t2;
-		const d1 = (t3 - t2) / (t3 - t1);
-		const d2 = (t2 - t1) / (t3 - t1);
-		const M1x = (t2 - t1) * (
-			c1 * (points[i][0] - points[i - 1][0]) / t1
-			+ c2 * (points[i + 1][0] - points[i][0]) / (t2 - t1)
+function generateOutlineAndBoundingBoxForProcessedSegments(segments, halfStrokeSize) {
+	const segmentCount = segments.length;
+	const firstSegment = segments[0];
+	const firstSegmentPoints = firstSegment.bezier.points;
+	const firstTangent = bezierBeginTangent(firstSegment.bezier);
+	const firstNormal = normalVector(firstTangent);
+	const firstOffset = firstSegment.startOffset;
+	let pathString
+		= `M${firstSegmentPoints[0].x - firstNormal[0] * firstOffset}`
+		+ ` ${firstSegmentPoints[0].y - firstNormal[1] * firstOffset}`
+		+ `A${firstOffset} ${firstOffset} 0 0 0`
+		+ ` ${firstSegmentPoints[0].x - firstTangent[0] * firstOffset}`
+		+ ` ${firstSegmentPoints[0].y - firstTangent[1] * firstOffset}`
+		+ `A${firstOffset} ${firstOffset} 0 0 0`
+		+ ` ${firstSegmentPoints[0].x + firstNormal[0] * firstOffset}`
+		+ ` ${firstSegmentPoints[0].y + firstNormal[1] * firstOffset}`;
+	for (const segment of segments) pathString += segment.forwardPath;
+	const lastSegment = segments[segmentCount - 1];
+	const lastSegmentPoints = lastSegment.bezier.points;
+	const lastTangent = bezierEndTangent(lastSegment.bezier);
+	const lastNormal = normalVector(lastTangent);
+	const lastOffset = lastSegment.endOffset;
+	pathString
+		+= `A${lastOffset} ${lastOffset} 0 0 0`
+		+ ` ${lastSegmentPoints[3].x + lastTangent[0] * lastOffset}`
+		+ ` ${lastSegmentPoints[3].y + lastTangent[1] * lastOffset}`
+		+ `A${lastOffset} ${lastOffset} 0 0 0`
+		+ ` ${lastSegmentPoints[3].x - lastNormal[0] * lastOffset}`
+		+ ` ${lastSegmentPoints[3].y - lastNormal[1] * lastOffset}`;
+	for (let i = segmentCount - 1; i >= 0; --i) pathString += segments[i].reversePath;
+	pathString += "Z";
+
+	const boundingBox = {...segments[0].boundingBox};
+	for (let i = 1; i < segmentCount; ++i) {
+		const segmentBoundingBox = segments[i].boundingBox;
+		updateBoundingBox(
+			boundingBox,
+			segmentBoundingBox.minX, segmentBoundingBox.minY,
+			segmentBoundingBox.maxX, segmentBoundingBox.maxY
 		);
-		const M1y = (t2 - t1) * (
-			c1 * (points[i][1] - points[i - 1][1]) / t1
-			+ c2 * (points[i + 1][1] - points[i][1]) / (t2 - t1)
-		);
-		const M2x = (t2 - t1) * (
-			d1 * (points[i + 1][0] - points[i][0]) / (t2 - t1)
-			+ d2 * (points[i + 2][0] - points[i + 1][0]) / (t3 - t2)
-		);
-		const M2y = (t2 - t1) * (
-			d1 * (points[i + 1][1] - points[i][1]) / (t2 - t1)
-			+ d2 * (points[i + 2][1] - points[i + 1][1]) / (t3 - t2)
-		);
-		result.push({
-			bezier: new Bezier(
-				points[i][0], points[i][1],
-				points[i][0] + M1x / 3, points[i][1] + M1y / 3,
-				points[i + 1][0] - M2x / 3, points[i + 1][1] - M2y / 3,
-				points[i + 1][0], points[i + 1][1]
-			),
-			startWeight: points[i][2],
-			endWeight: points[i + 1][2]
-		});
 	}
-	return result;
+	return {pathString, boundingBox};
 }
 
-// Generate an SVG path string representing an outline for a stroke with the given points.
+function processSubsegment(segment, halfStrokeSize, startT, endT) {
+	const bezier = segment.bezier.split(startT, endT);
+	const startOffset = (segment.startWeight + (segment.endWeight - segment.startWeight) * startT) * halfStrokeSize;
+	const endOffset = (segment.startWeight + (segment.endWeight - segment.startWeight) * endT) * halfStrokeSize;
+
+	const firstPoint = bezier.points[0];
+	const lastPoint = bezier.points[3];
+	let boundingBox = {
+		minX: firstPoint.x - halfStrokeSize,
+		minY: firstPoint.y - halfStrokeSize,
+		maxX: firstPoint.x + halfStrokeSize,
+		maxY: firstPoint.y + halfStrokeSize
+	};
+	updateBoundingBox(
+		boundingBox,
+		lastPoint.x - halfStrokeSize,
+		lastPoint.y - halfStrokeSize,
+		lastPoint.x + halfStrokeSize,
+		lastPoint.y + halfStrokeSize
+	);
+
+	let forwardPath = "";
+	let lastT = 0;
+	for (const subcurve of bezier.reduce()) {
+		const subcurveStartOffset = startOffset + (endOffset - startOffset) * subcurve._t1;
+		const subcurveEndOffset = startOffset + (endOffset - startOffset) * subcurve._t2;
+		const offsetPoints
+			= subcurve.scale(t => subcurveStartOffset + (subcurveEndOffset - subcurveStartOffset) * t).points;
+		// `bezier.reduce()` may have missing segments. Recover from those situations by drawing a straight line
+		// as a substitute for the offset segment of those missing segments.
+		if (Math.abs(subcurve._t1 - lastT) > DISCONNECTION_THRESHOLD)
+			forwardPath += `L${offsetPoints[0].x} ${offsetPoints[0].y}`;
+		forwardPath
+			+= `C${offsetPoints[1].x} ${offsetPoints[1].y}`
+			+ ` ${offsetPoints[2].x} ${offsetPoints[2].y}`
+			+ ` ${offsetPoints[3].x} ${offsetPoints[3].y}`;
+		const subBoundingBox = subcurve.bbox();
+		updateBoundingBox(
+			boundingBox,
+			subBoundingBox.x.min - halfStrokeSize,
+			subBoundingBox.y.min - halfStrokeSize,
+			subBoundingBox.x.max - halfStrokeSize,
+			subBoundingBox.y.max - halfStrokeSize
+		);
+		lastT = subcurve._t2;
+	}
+	if (lastT !== 1) {
+		const endPoint = bezier.points[3];
+		const endNormal = normalVector(bezierEndTangent(bezier));
+		forwardPath += `L${endPoint.x + endNormal[0] * endOffset} ${endPoint.y + endNormal[1] * endOffset}`;
+	}
+	const reverseBezier = new Bezier(...bezier.points.toReversed().map(p => ({x: p.x, y: p.y})));
+	let reversePath = "";
+	lastT = 0;
+	for (const subcurve of reverseBezier.reduce()) {
+		const subcurveStartOffset = endOffset + (startOffset - endOffset) * subcurve._t1;
+		const subcurveEndOffset = endOffset + (startOffset - endOffset) * subcurve._t2;
+		const offsetPoints
+			= subcurve.scale(t => subcurveStartOffset + (subcurveEndOffset - subcurveStartOffset) * t).points;
+		if (Math.abs(subcurve._t1 - lastT) > DISCONNECTION_THRESHOLD)
+			reversePath += `L${offsetPoints[0].x} ${offsetPoints[0].y}`;
+		reversePath
+			+= `C${offsetPoints[1].x} ${offsetPoints[1].y}`
+			+ ` ${offsetPoints[2].x} ${offsetPoints[2].y}`
+			+ ` ${offsetPoints[3].x} ${offsetPoints[3].y}`;
+		const subBoundingBox = subcurve.bbox();
+		updateBoundingBox(
+			boundingBox,
+			subBoundingBox.x.min - halfStrokeSize,
+			subBoundingBox.y.min - halfStrokeSize,
+			subBoundingBox.x.max - halfStrokeSize,
+			subBoundingBox.y.max - halfStrokeSize
+		);
+		lastT = subcurve._t2;
+	}
+	if (lastT !== 1) {
+		const endPoint = reverseBezier.points[3];
+		const endNormal = normalVector(bezierEndTangent(bezier));
+		reversePath += `L${endPoint.x - endNormal[0] * startOffset} ${endPoint.y - endNormal[1] * startOffset}`;
+	}
+	return {bezier, startOffset, endOffset, forwardPath, reversePath, boundingBox};
+}
+
 export function generateOutlineAndBoundingBox(stroke) {
 	const halfStrokeSize = stroke.size / 2;
+	const spline = stroke.spline;
 	if (stroke.isSimple) {
 		const points = stroke.basePath;
 		if (points.length === 1) {
@@ -114,143 +209,77 @@ export function generateOutlineAndBoundingBox(stroke) {
 		}
 		return;
 	}
-	const spline = stroke.basePath;
-	const segmentCount = spline.length;
-	const firstSegment = spline[0];
-	const firstSegmentPoints = firstSegment.bezier.points;
-	const firstNormal = (() => {
-		for (let i = 1; i < 4; ++i) {
-			const dx = firstSegmentPoints[i].x - firstSegmentPoints[0].x;
-			const dy = firstSegmentPoints[i].y - firstSegmentPoints[0].y;
-			const length = Math.sqrt(dx * dx + dy * dy);
-			if (length !== 0) return [-dy / length, dx / length];
-		}
-		return [0, 1];
-	})();
-	const firstOffset = firstSegment.startWeight * halfStrokeSize;
-	let path
-		= `M${firstSegmentPoints[0].x - firstNormal[0] * firstOffset}`
-		+ ` ${firstSegmentPoints[0].y - firstNormal[1] * firstOffset}`
-		+ `A${firstOffset} ${firstOffset} 0 ${firstSegment.startWeight < firstSegment.endWeight ? 0 : 1} 0`
-		+ ` ${firstSegmentPoints[0].x + firstNormal[0] * firstOffset}`
-		+ ` ${firstSegmentPoints[0].y + firstNormal[1] * firstOffset}`;
-	let boundingBox = {
-		minX: firstSegmentPoints[0].x - halfStrokeSize,
-		minY: firstSegmentPoints[0].x - halfStrokeSize,
-		maxX: firstSegmentPoints[1].x + halfStrokeSize,
-		maxY: firstSegmentPoints[1].x + halfStrokeSize
-	};
-	for (let i = 0; i < segmentCount; ++i) {
-		const {bezier, startWeight, endWeight} = spline[i];
+	for (const segment of spline) {
+		if ("processed" in segment) continue;
+		const processed = [];
+		const {bezier, startWeight, endWeight} = segment;
 		const startOffset = startWeight * halfStrokeSize;
 		const endOffset = endWeight * halfStrokeSize;
-		const totalLength = bezier.length();
-		let lastT = 0;
-		for (const subcurve of bezier.reduce()) {
-			const subcurveStartOffset = startOffset + (endOffset - startOffset) * subcurve._t1;
-			const subcurveEndOffset = startOffset + (endOffset - startOffset) * subcurve._t2;
-			const offsetPoints
-				= subcurve.scale(t => subcurveStartOffset + (subcurveEndOffset - subcurveStartOffset) * t).points;
-			// `bezier.reduce()` may have missing segments. Recover from those situations by drawing a straight line
-			// as a substitute for the offset segment of those missing segments.
-			if (Math.abs(subcurve._t1 - lastT) > 1e-6) path += `L${offsetPoints[1].x} ${offsetPoints[1].y}`;
-			path
-				+= `C${offsetPoints[1].x} ${offsetPoints[1].y}`
-				+ ` ${offsetPoints[2].x} ${offsetPoints[2].y}`
-				+ ` ${offsetPoints[3].x} ${offsetPoints[3].y}`;
-			const subBoundingBox = subcurve.bbox();
-			updateBoundingBox(
-				boundingBox,
-				subBoundingBox.x.min - halfStrokeSize,
-				subBoundingBox.y.min - halfStrokeSize,
-				subBoundingBox.x.max - halfStrokeSize,
-				subBoundingBox.y.max - halfStrokeSize
-			);
-			lastT = subcurve._t2;
+		const ts = [
+			0, ...findBezierCriticalPoints(bezier.points.map(p => [p.x, p.y]), startOffset, endOffset), 1
+		].filter((t, i, a) => i === 0 || t !== a[i - 1]);
+		let lastStart = null;
+		let lastEnd = null;
+		for (let i = 1; i < ts.length; ++i) {
+			const m = (ts[i - 1] + ts[i]) / 2;
+			const offset = startOffset + (endOffset - startOffset) * m;
+			const curvature = bezier.curvature(m);
+			if (curvature.k !== 0 && Math.abs(curvature.r) < offset) {
+				if (lastStart !== null) processed.push(processSubsegment(segment, halfStrokeSize, lastStart, lastEnd));
+				if (i === 1 || lastStart !== null) processed.push(null);
+				lastStart = null;
+				lastEnd = null;
+			} else {
+				if (lastStart === null) lastStart = ts[i - 1];
+				lastEnd = ts[i];
+			}
 		}
-		if (lastT !== 1) {
-			const bezierPoints = bezier.points;
-			const endPoint = bezierPoints[3];
-			const endNormal = (() => {
-				for (let i = 2; i >= 0; --i) {
-					const dx = bezierPoints[3].x - bezierPoints[i].x;
-					const dy = bezierPoints[3].y - bezierPoints[i].y;
-					const length = Math.sqrt(dx * dx + dy * dy);
-					if (length !== 0) return [-dy / length, dx / length];
+		if (lastStart !== null) processed.push(processSubsegment(segment, halfStrokeSize, lastStart, lastEnd));
+		segment.processed = processed;
+	}
+	let pathString = "";
+	let boundingBox = null;
+	let pendingSubsegments = [];
+	for (const segment of spline) {
+		for (const subsegment of segment.processed) {
+			if (subsegment === null) {
+				if (pendingSubsegments.length !== 0) {
+					const subdata
+						= generateOutlineAndBoundingBoxForProcessedSegments(pendingSubsegments, halfStrokeSize);
+					pathString += subdata.pathString;
+					const subBoundingBox = subdata.boundingBox;
+					if (boundingBox === null) boundingBox = {...subBoundingBox};
+					else updateBoundingBox(
+						boundingBox,
+						subBoundingBox.minX,
+						subBoundingBox.minY,
+						subBoundingBox.maxX,
+						subBoundingBox.maxY
+					);
+					pendingSubsegments = [];
 				}
-				return [0, 1];
-			})();
-			path += `L${endPoint.x + endNormal[0] * endOffset} ${endPoint.y + endNormal[1] * endOffset}`;
+			} else {
+				pendingSubsegments.push(subsegment);
+			}
 		}
 	}
-	const lastSegment = spline[segmentCount - 1];
-	const lastSegmentPoints = lastSegment.bezier.points;
-	const lastNormal = (() => {
-		for (let i = 2; i >= 0; --i) {
-			const dx = lastSegmentPoints[3].x - lastSegmentPoints[i].x;
-			const dy = lastSegmentPoints[3].y - lastSegmentPoints[i].y;
-			const length = Math.sqrt(dx * dx + dy * dy);
-			if (length !== 0) return [-dy / length, dx / length];
-		}
-		return [0, 1];
-	})();
-	const lastOffset = lastSegment.endWeight * halfStrokeSize;
-	path
-		+= `A${lastOffset} ${lastOffset} 0 ${lastSegment.startWeight < lastSegment.endWeight ? 1 : 0} 0`
-		+ ` ${lastSegmentPoints[3].x - lastNormal[0] * lastOffset}`
-		+ ` ${lastSegmentPoints[3].y - lastNormal[1] * lastOffset}`;
-	updateBoundingBox(
-		boundingBox,
-		lastSegmentPoints[3].x - halfStrokeSize, lastSegmentPoints[3].y - halfStrokeSize,
-		lastSegmentPoints[3].x + halfStrokeSize, lastSegmentPoints[3].y + halfStrokeSize
-	);
-	for (let i = segmentCount - 1; i >= 0; --i) {
-		const {bezier: originalBezier, startWeight, endWeight} = spline[i];
-		const originalPoints = originalBezier.points;
-		const bezier = new Bezier(
-			originalPoints[3].x, originalPoints[3].y,
-			originalPoints[2].x, originalPoints[2].y,
-			originalPoints[1].x, originalPoints[1].y,
-			originalPoints[0].x, originalPoints[0].y
+	if (pendingSubsegments.length !== 0) {
+		const subdata
+			= generateOutlineAndBoundingBoxForProcessedSegments(pendingSubsegments, halfStrokeSize);
+		pathString += subdata.pathString;
+		const subBoundingBox = subdata.boundingBox;
+		if (boundingBox === null) boundingBox = {...subBoundingBox};
+		else updateBoundingBox(
+			boundingBox,
+			subBoundingBox.minX,
+			subBoundingBox.minY,
+			subBoundingBox.maxX,
+			subBoundingBox.maxY
 		);
-		const startOffset = endWeight * halfStrokeSize;
-		const endOffset = startWeight * halfStrokeSize;
-		let lastT = 0;
-		for (const subcurve of bezier.reduce()) {
-			const subcurveStartOffset = startOffset + (endOffset - startOffset) * subcurve._t1;
-			const subcurveEndOffset = startOffset + (endOffset - startOffset) * subcurve._t2;
-			const offsetPoints
-				= subcurve.scale(t => subcurveStartOffset + (subcurveEndOffset - subcurveStartOffset) * t).points;
-			if (Math.abs(subcurve._t1 - lastT) > 1e-6) path += `L${offsetPoints[1].x} ${offsetPoints[1].y}`;
-			path
-				+= `C${offsetPoints[1].x} ${offsetPoints[1].y}`
-				+ ` ${offsetPoints[2].x} ${offsetPoints[2].y}`
-				+ ` ${offsetPoints[3].x} ${offsetPoints[3].y}`;
-			const subBoundingBox = subcurve.bbox();
-			updateBoundingBox(
-				boundingBox,
-				subBoundingBox.x.min - halfStrokeSize,
-				subBoundingBox.y.min - halfStrokeSize,
-				subBoundingBox.x.max - halfStrokeSize,
-				subBoundingBox.y.max - halfStrokeSize
-			);
-			lastT = subcurve._t2;
-		}
-		if (lastT !== 1) {
-			const bezierPoints = bezier.points;
-			const endPoint = bezierPoints[3];
-			const endNormal = (() => {
-				for (let i = 2; i >= 0; --i) {
-					const dx = bezierPoints[3].x - bezierPoints[i].x;
-					const dy = bezierPoints[3].y - bezierPoints[i].y;
-					const length = Math.sqrt(dx * dx + dy * dy);
-					if (length !== 0) return [-dy / length, dx / length];
-				}
-				return [0, 1];
-			})();
-			path += `L${endPoint.x + endNormal[0] * endOffset} ${endPoint.y + endNormal[1] * endOffset}`;
-		}
 	}
-	path += "Z";
-	return {pathString: path, ...boundingBox};
+	if (pathString.length === 0) {
+		const fallbackStroke = {...stroke, isSimple: true, basePath: stroke.basePath.slice(0, 2)};
+		return generateOutlineAndBoundingBox(fallbackStroke);
+	}
+	return {pathString, ...boundingBox};
 }
