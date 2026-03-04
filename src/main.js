@@ -66,7 +66,7 @@ function interpolate(p1, p2, t) {
 
 function generateStroke(stroke) {
 	const generated = generateOutlineAndBoundingBox(stroke);
-	if (stroke.isFinal) console.log(generated.pathString);
+	//if (stroke.isFinal) console.log(generated.pathString);
 	stroke.outline = new Path2D(generated.pathString);
 	stroke.minX = generated.minX;
 	stroke.minY = generated.minY;
@@ -306,11 +306,23 @@ canvas.addEventListener("pointerdown", event => {
 	pointerDown = true;
 	[lastPointerX, lastPointerY] = scaledPointerOffset(event);
 	const pressure = event.pointerType === "pen" ? event.pressure : 1;
-	currentHandlers = handlers[modeMapping[currentMode][
-		event.getModifierState("Shift") ? 1
-		: event.getModifierState("Control") ? 2
-		: 0
-	]];
+	let handlerName;
+	switch (currentMode) {
+		case 0:
+			handlerName = event.getModifierState("Shift") || event.button === 5 ? "erase"
+				: event.getModifierState("Ctrl") ? "pan"
+				: "draw";
+			break;
+		case 1:
+			handlerName = event.getModifierState("Shift") ? "draw"
+				: event.getModifierState("Control") ? "pan"
+				: "erase";
+			break;
+		case 2:
+			handlerName = "pan";
+			break;
+	}
+	currentHandlers = handlers[handlerName];
 	currentHandlers.pointerdown(event, lastPointerX, lastPointerY, pressure);
 });
 canvas.addEventListener("pointermove", event => {
