@@ -247,8 +247,6 @@ const handlers = {
 			}
 			console.log(s);
 			*/
-			console.log(`${currentStroke.simplifier.spline.length} segments / ${currentStroke.basePath.length} points.`);
-			currentStroke.spline = [...currentStroke.simplifier.spline.map(s => ({...s}))];
 			generateStroke(stroke);
 			bush.insert(stroke);
 			currentStroke = null;
