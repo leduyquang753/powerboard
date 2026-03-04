@@ -329,6 +329,9 @@ canvas.addEventListener("pointerup", event => {
 	pointerDown = false;
 	currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 });
+canvas.addEventListener("contextmenu", event => {
+	event.preventDefault();
+});
 document.addEventListener("keydown", event => {
 	if (event.key === "Delete") {
 		bush.clear();
