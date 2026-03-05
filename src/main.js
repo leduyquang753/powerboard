@@ -339,6 +339,12 @@ canvas.addEventListener("pointerup", event => {
 	pointerDown = false;
 	currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 });
+canvas.addEventListener("pointerleave", event => {
+	currentHandlers.pointerup(event);
+});
+window.addEventListener("blur", event => {
+	currentHandlers.pointerup(event);
+});
 canvas.addEventListener("contextmenu", event => {
 	event.preventDefault();
 });
