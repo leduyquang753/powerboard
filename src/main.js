@@ -295,14 +295,11 @@ const handlers = {
 		}
 	}
 };
-const modeMapping = [
-	["draw", "erase", "pan"],
-	["erase", "draw", "pan"],
-	["pan", "pan", "pan"]
-];
 let currentHandlers = null;
 
+const buttonsToHandle = new Set([0, 1, 2, 5]);
 canvas.addEventListener("pointerdown", event => {
+  if (!buttonsToHandle.has(event.button)) return;
 	event.preventDefault();
 	pointerDown = true;
 	[lastPointerX, lastPointerY] = scaledPointerOffset(event);
@@ -310,13 +307,13 @@ canvas.addEventListener("pointerdown", event => {
 	let handlerName;
 	switch (currentMode) {
 		case 0:
-			handlerName = event.getModifierState("Shift") || event.button === 5 ? "erase"
-				: event.getModifierState("Ctrl") ? "pan"
+			handlerName = event.getModifierState("Shift") || event.button === 2 || event.button === 5 ? "erase"
+				: event.getModifierState("Control") || event.button === 1 ? "pan"
 				: "draw";
 			break;
 		case 1:
-			handlerName = event.getModifierState("Shift") ? "draw"
-				: event.getModifierState("Control") ? "pan"
+			handlerName = event.getModifierState("Shift") || event.button === 2 ? "draw"
+				: event.getModifierState("Control") || event.button === 1 ? "pan"
 				: "erase";
 			break;
 		case 2:
