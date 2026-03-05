@@ -27,7 +27,6 @@ canvas.style.width = "100dvw";
 canvas.style.height = "100dvh";
 canvas.style.touchAction = "none";
 document.getElementById("mainCanvas").appendChild(canvas);
-//alert(`${window.devicePixelRatio.toString()} ${root.clientWidth} ${root.clientHeight} ${canvas.clientWidth} ${canvas.clientHeight}`);
 
 const context = canvas.getContext("2d");
 context.strokeStyle = "black";
@@ -208,7 +207,7 @@ const handlers = {
 			currentStroke = {
 				isDraft: false,
 				isSimple: true,
-				size: drawSize,
+				size: event.pointerType == "pen" ? drawSize * 2 : drawSize,
 				color: drawColor,
 				basePath: [[pointerX - offsetX, pointerY - offsetY, pressure]],
 				simplifier: new LineSimplifier([pointerX - offsetX, pointerY - offsetY, pressure], drawSize)
