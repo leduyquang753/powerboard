@@ -8,24 +8,26 @@ import {eraseStroke} from "./StrokeErasure.js";
 
 (() => {
 
-let canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
-let canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
+const root = document.documentElement;
+let canvasWidth = Math.round(root.clientWidth * window.devicePixelRatio);
+let canvasHeight = Math.round(root.clientHeight * window.devicePixelRatio);
 
 const backgroundCanvas = document.createElement("canvas");
 backgroundCanvas.width = canvasWidth;
 backgroundCanvas.height = canvasHeight;
-backgroundCanvas.style.width = "100vw";
-backgroundCanvas.style.height = "100vh";
+backgroundCanvas.style.width = "100dvw";
+backgroundCanvas.style.height = "100dvh";
 document.getElementById("backgroundCanvas").appendChild(backgroundCanvas);
 const pageBackground = new PageBackground(backgroundCanvas);
 
 const canvas = document.createElement("canvas");
 canvas.width = canvasWidth;
 canvas.height = canvasHeight;
-canvas.style.width = "100vw";
-canvas.style.height = "100vh";
+canvas.style.width = "100dvw";
+canvas.style.height = "100dvh";
 canvas.style.touchAction = "none";
 document.getElementById("mainCanvas").appendChild(canvas);
+//alert(`${window.devicePixelRatio.toString()} ${root.clientWidth} ${root.clientHeight} ${canvas.clientWidth} ${canvas.clientHeight}`);
 
 const context = canvas.getContext("2d");
 context.strokeStyle = "black";
@@ -360,8 +362,9 @@ document.addEventListener("keydown", event => {
 	}
 });
 window.addEventListener("resize", event => {
-	canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
-	canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
+	const root = document.documentElement;
+	canvasWidth = Math.round(root.clientWidth * window.devicePixelRatio);
+	canvasHeight = Math.round(root.clientHeight * window.devicePixelRatio);
 	canvas.width = canvasWidth;
 	canvas.height = canvasHeight;
 	pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
