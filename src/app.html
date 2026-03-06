@@ -4,9 +4,12 @@
 	<meta charset=utf-8>
 	<title>PowerBoard</title>
 	<meta name=viewport content="width=device-width, initial-scale=1">
-	<link rel=stylesheet href="src/styles.css">
+	%sveltekit.head%
 </head>
-<body style="margin: 0; overflow: hidden;">
+<body data-sveltekit-preload-data=tap>
+	<div style="display: contents;">%sveltekit.body%</div>
+</body>
+<!--body style="margin: 0; overflow: hidden;">
 	<div class=canvas id=backgroundCanvas></div>
 	<div class=canvas id=mainCanvas></div>
 	<div class=controls>
@@ -28,5 +31,5 @@
 		</div>
 	</div>
 	<script type=module src="src/main.js"></script>
-</body>
+</body-->
 </html>

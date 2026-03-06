@@ -1,54 +1,45 @@
+<script>
 import RBush from "rbush";
+import {onMount} from "svelte";
 
-import {LineSimplifier} from "./LineSimplification.js";
-import OrderMaintenance from "./OrderMaintenance.js";
-import {generateOutlineAndBoundingBox} from "./OutlineGeneration.js";
-import PageBackground from "./PageBackground.js";
-import {eraseStroke} from "./StrokeErasure.js";
+import {LineSimplifier} from "$lib/core/LineSimplification.js";
+import OrderMaintenance from "$lib/core/OrderMaintenance.js";
+import {generateOutlineAndBoundingBox} from "$lib/core/OutlineGeneration.js";
+import PageBackground from "$lib/core/PageBackground.js";
+import {eraseStroke} from "$lib/core/StrokeErasure.js";
 
-(() => {
+import ControlGroup from "./ControlGroup.svelte";
 
-const root = document.documentElement;
-let canvasWidth = Math.round(root.clientWidth * window.devicePixelRatio);
-let canvasHeight = Math.round(root.clientHeight * window.devicePixelRatio);
+let backgroundCanvas;
+let canvas;
+let canvasWidth = $state(0);
+let canvasHeight = $state(0);
 
-const backgroundCanvas = document.createElement("canvas");
-backgroundCanvas.width = canvasWidth;
-backgroundCanvas.height = canvasHeight;
-backgroundCanvas.style.width = "100dvw";
-backgroundCanvas.style.height = "100dvh";
-document.getElementById("backgroundCanvas").appendChild(backgroundCanvas);
-const pageBackground = new PageBackground(backgroundCanvas);
+let context = $state(null);
+let pageBackground = $state(null);
 
-const canvas = document.createElement("canvas");
-canvas.width = canvasWidth;
-canvas.height = canvasHeight;
-canvas.style.width = "100dvw";
-canvas.style.height = "100dvh";
-canvas.style.touchAction = "none";
-document.getElementById("mainCanvas").appendChild(canvas);
+let bush = $state(new RBush());
+let orderMaintenance = $state(new OrderMaintenance());
 
-const context = canvas.getContext("2d");
-context.strokeStyle = "black";
-context.fillStyle = "black";
-context.lineCap = "round";
+let offsetX = $state(0);
+let offsetY = $state(0);
+let currentStroke = $state(null);
 
-const modeSelector = document.getElementById("modeSelector");
-const drawControls = document.getElementById("drawOptions");
-const eraseControls = document.getElementById("eraseOptions");
-const panControls = document.getElementById("panOptions");
+let currentMode = $state("draw");
+let drawSize = $state(5);
+let drawColor = $state("#000000");
+let eraseSize = $state(100);
+let eraseWholeStroke = $state(false);
 
-const bush = new RBush();
-let orderMaintenance = new OrderMaintenance();
-let offsetX = 0;
-let offsetY = 0;
-let currentStroke = null;
+let pointerDown = $state(false);
+let originalOffsetX = $state(0);
+let originalOffsetY = $state(0);
+let firstMouseX = $state(0);
+let firstMouseY = $state(0);
+let lastPointerX = $state(0);
+let lastPointerY = $state(0);
 
-let currentMode = 0;
-let drawSize = 4;
-let drawColor = "#000000";
-let eraseSize = 40;
-let eraseWholeStroke = false;
+let currentHandlers = $state(null);
 
 function midpoint(p1, p2) {
 	return [
@@ -168,38 +159,9 @@ function render() {
 	context.restore();
 }
 
-function updateMode() {
-	for (const control of modeSelector.children) control.classList.remove("activeControl");
-	modeSelector.children[currentMode].classList.add("activeControl");
-	if (currentMode === 0) drawControls.classList.add("visibleControlGroup");
-	else drawControls.classList.remove("visibleControlGroup");
-	if (currentMode === 1) eraseControls.classList.add("visibleControlGroup");
-	else eraseControls.classList.remove("visibleControlGroup");
-	if (currentMode === 2) panControls.classList.add("visibleControlGroup");
-	else panControls.classList.remove("visibleControlGroup");
-}
-
-function updateDrawOptions() {
-	drawControls.children[0].innerText = `Color: ${drawColor}`;
-	drawControls.children[1].innerText = `Size: ${drawSize}`;
-}
-
-function updateEraseOptions() {
-	eraseControls.children[0].innerText = `Mode: ${eraseWholeStroke ? "whole" : "partial"}`;
-	eraseControls.children[1].innerText = `Size: ${eraseSize}`;
-}
-
 function scaledPointerOffset(event) {
 	return [event.offsetX * window.devicePixelRatio, event.offsetY * window.devicePixelRatio];
 }
-
-let pointerDown = false;
-let originalOffsetX = 0;
-let originalOffsetY = 0;
-let firstMouseX = 0;
-let firstMouseY = 0;
-let lastPointerX = 0;
-let lastPointerY = 0;
 
 const handlers = {
 	draw: {
@@ -295,126 +257,192 @@ const handlers = {
 		}
 	}
 };
-let currentHandlers = null;
 
 const buttonsToHandle = new Set([0, 1, 2, 5]);
-canvas.addEventListener("pointerdown", event => {
-  if (!buttonsToHandle.has(event.button)) return;
-	event.preventDefault();
-	pointerDown = true;
-	[lastPointerX, lastPointerY] = scaledPointerOffset(event);
-	const pressure = event.pointerType === "pen" ? event.pressure : 1;
-	let handlerName;
-	switch (currentMode) {
-		case 0:
-			handlerName = event.getModifierState("Shift") || event.button === 2 || event.button === 5 ? "erase"
-				: event.getModifierState("Control") || event.button === 1 ? "pan"
-				: "draw";
-			break;
-		case 1:
-			handlerName = event.getModifierState("Shift") || event.button === 2 ? "draw"
-				: event.getModifierState("Control") || event.button === 1 ? "pan"
-				: "erase";
-			break;
-		case 2:
-			handlerName = "pan";
-			break;
+
+function onModeSelect(newMode) {
+	currentMode = newMode;
+}
+
+const onDrawSelect = {
+	"color": () => {
+		const color = prompt("Enter color as 3-digit or 6-digit hexadecimal code:");
+		if (color === null || !color.match(/^[0-9A-F]{3}(?:[0-9A-F]{3})?$/i)) return;
+		drawColor = "#" + color.toUpperCase();
+	},
+	"size": () => {
+		const sizeString = prompt("Enter pen size:");
+		if (sizeString === null || sizeString === "") return;
+		const size = Number(sizeString);
+		if (Number.isNaN(size)) return;
+		drawSize = Math.max(1, Math.min(100, size));
 	}
-	currentHandlers = handlers[handlerName];
-	currentHandlers.pointerdown(event, lastPointerX, lastPointerY, pressure);
-});
-canvas.addEventListener("pointermove", event => {
-	event.preventDefault();
-	if (!pointerDown) return;
-	const [pointerX, pointerY] = scaledPointerOffset(event);
-	if (pointerX === lastPointerX && pointerY === lastPointerY) return;
-	lastPointerX = pointerX;
-	lastPointerY = pointerY;
-	const pressure = event.pointerType === "pen" ? event.pressure : 1;
-	currentHandlers.pointermove(event, lastPointerX, lastPointerY, pressure);
-});
-canvas.addEventListener("pointerup", event => {
-	event.preventDefault();
-	if (!pointerDown) return;
-	pointerDown = false;
-	currentHandlers.pointerup(event, ...scaledPointerOffset(event));
-});
-canvas.addEventListener("pointerleave", event => {
-	currentHandlers.pointerup(event);
-});
-window.addEventListener("blur", event => {
-	currentHandlers.pointerup(event);
-});
-canvas.addEventListener("contextmenu", event => {
-	event.preventDefault();
-});
-document.addEventListener("keydown", event => {
-	if (event.key === "Delete") {
-		bush.clear();
-		orderMaintenance = new OrderMaintenance();
-		offsetX = 0;
-		offsetY = 0;
-		pageBackground.render(offsetX, offsetY);
-		render();
-	} else if (event.key === " ") {
-		offsetX = 0;
-		offsetY = 0;
-		pageBackground.render(offsetX, offsetY);
-		render();
+};
+
+const onEraseSelect = {
+	"mode": () => {
+		eraseWholeStroke = !eraseWholeStroke;
+	},
+	"size": () => {
+		const sizeString = prompt("Enter eraser size:");
+		if (sizeString === null || sizeString === "") return;
+		const size = Number(sizeString);
+		if (Number.isNaN(size)) return;
+		eraseSize = Math.max(1, Math.min(1000, size));
 	}
-});
-window.addEventListener("resize", event => {
+};
+
+function onPanSelect() {
+	offsetX = 0;
+	offsetY = 0;
+	pageBackground.render(offsetX, offsetY);
+	render();
+}
+
+onMount(() => {
 	const root = document.documentElement;
 	canvasWidth = Math.round(root.clientWidth * window.devicePixelRatio);
 	canvasHeight = Math.round(root.clientHeight * window.devicePixelRatio);
 	canvas.width = canvasWidth;
 	canvas.height = canvasHeight;
+	context = canvas.getContext("2d");
+	context.strokeStyle = "black";
+	context.fillStyle = "black";
+	context.lineCap = "round";
+	pageBackground = new PageBackground(backgroundCanvas);
 	pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
 	pageBackground.render(offsetX, offsetY);
-	render();
-});
-for (let mode = 0; mode < 3; ++mode) modeSelector.children[mode].addEventListener("click", event => {
-	currentMode = mode;
-	updateMode();
-});
-drawControls.children[0].addEventListener("click", event => {
-	const color = prompt("Enter color as 3-digit or 6-digit hexadecimal code:");
-	if (color === null || !color.match(/^[0-9A-F]{3}(?:[0-9A-F]{3})?$/i)) return;
-	drawColor = "#" + color.toUpperCase();
-	updateDrawOptions();
-});
-drawControls.children[1].addEventListener("click", event => {
-	const sizeString = prompt("Enter pen size:");
-	if (sizeString === null || sizeString === "") return;
-	const size = Number(sizeString);
-	if (Number.isNaN(size)) return;
-	drawSize = Math.max(1, Math.min(100, size));
-	updateDrawOptions();
-});
-eraseControls.children[0].addEventListener("click", event => {
-	eraseWholeStroke = !eraseWholeStroke;
-	updateEraseOptions();
-});
-eraseControls.children[1].addEventListener("click", event => {
-	const sizeString = prompt("Enter eraser size:");
-	if (sizeString === null || sizeString === "") return;
-	const size = Number(sizeString);
-	if (Number.isNaN(size)) return;
-	eraseSize = Math.max(1, Math.min(1000, size));
-	updateEraseOptions();
-});
-panControls.children[0].addEventListener("click", event => {
-	offsetX = 0;
-	offsetY = 0;
-	pageBackground.render(offsetX, offsetY);
-	render();
-});
 
-updateMode();
-updateDrawOptions();
-updateEraseOptions();
+	canvas.addEventListener("pointerdown", event => {
+	  if (!buttonsToHandle.has(event.button)) return;
+		event.preventDefault();
+		pointerDown = true;
+		[lastPointerX, lastPointerY] = scaledPointerOffset(event);
+		const pressure = event.pointerType === "pen" ? event.pressure : 1;
+		let handlerName;
+		switch (currentMode) {
+			case "draw":
+				handlerName = event.getModifierState("Shift") || event.button === 2 || event.button === 5 ? "erase"
+					: event.getModifierState("Control") || event.button === 1 ? "pan"
+					: "draw";
+				break;
+			case "erase":
+				handlerName = event.getModifierState("Shift") || event.button === 2 ? "draw"
+					: event.getModifierState("Control") || event.button === 1 ? "pan"
+					: "erase";
+				break;
+			case "pan":
+				handlerName = "pan";
+				break;
+		}
+		currentHandlers = handlers[handlerName];
+		currentHandlers.pointerdown(event, lastPointerX, lastPointerY, pressure);
+	});
+	canvas.addEventListener("pointermove", event => {
+		event.preventDefault();
+		if (!pointerDown) return;
+		const [pointerX, pointerY] = scaledPointerOffset(event);
+		if (pointerX === lastPointerX && pointerY === lastPointerY) return;
+		lastPointerX = pointerX;
+		lastPointerY = pointerY;
+		const pressure = event.pointerType === "pen" ? event.pressure : 1;
+		currentHandlers.pointermove(event, lastPointerX, lastPointerY, pressure);
+	});
+	canvas.addEventListener("pointerup", event => {
+		event.preventDefault();
+		if (!pointerDown) return;
+		pointerDown = false;
+		currentHandlers.pointerup(event, ...scaledPointerOffset(event));
+	});
+	canvas.addEventListener("pointerleave", event => {
+		if (pointerDown) currentHandlers.pointerup(event);
+	});
+	window.addEventListener("blur", event => {
+		if (pointerDown) currentHandlers.pointerup(event);
+	});
+	canvas.addEventListener("contextmenu", event => {
+		event.preventDefault();
+	});
+	document.addEventListener("keydown", event => {
+		if (event.key === "Delete") {
+			bush.clear();
+			orderMaintenance = new OrderMaintenance();
+			offsetX = 0;
+			offsetY = 0;
+			pageBackground.render(offsetX, offsetY);
+			render();
+		} else if (event.key === " ") {
+			offsetX = 0;
+			offsetY = 0;
+			pageBackground.render(offsetX, offsetY);
+			render();
+		}
+	});
+	window.addEventListener("resize", event => {
+		const root = document.documentElement;
+		canvasWidth = Math.round(root.clientWidth * window.devicePixelRatio);
+		canvasHeight = Math.round(root.clientHeight * window.devicePixelRatio);
+		canvas.width = canvasWidth;
+		canvas.height = canvasHeight;
+		pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
+		pageBackground.render(offsetX, offsetY);
+		render();
+	});
+});
+</script>
 
-pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
-pageBackground.render(offsetX, offsetY);
+<style>
+canvas {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100dvw;
+	height: 100dvh;
+	touch-action: none;
+}
 
-})();
+.controls {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: 100dvw;
+	padding: 1em;
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	gap: 1em;
+	pointer-events: none;
+	user-select: none;
+}
+
+.controls > :global(*) {
+	pointer-events: auto;
+}
+</style>
+
+<canvas bind:this={backgroundCanvas}></canvas>
+<canvas bind:this={canvas}></canvas>
+<div class=controls>
+	<ControlGroup items={[
+		{key: "draw", text: "Draw"},
+		{key: "erase", text: "Erase"},
+		{key: "pan", text: "Pan"}
+	]} activeItem={currentMode} onSelect={onModeSelect}/>
+	{#if currentMode === "draw"}
+		<ControlGroup items={[
+			{key: "color", text: `Color: ${drawColor}`},
+			{key: "size", text: `Size: ${drawSize}`}
+		]} onSelect={key => { onDrawSelect[key](); }}/>
+	{/if}
+	{#if currentMode === "erase"}
+		<ControlGroup items={[
+			{key: "mode", text: `Mode: ${eraseWholeStroke ? "whole" : "partial"}`},
+			{key: "size", text: `Size: ${eraseSize}`}
+		]} onSelect={key => { onEraseSelect[key](); }}/>
+	{/if}
+	{#if currentMode === "pan"}
+		<ControlGroup items={[
+			{key: "reset", text: "Reset"}
+		]} onSelect={onPanSelect}/>
+	{/if}
+</div>
