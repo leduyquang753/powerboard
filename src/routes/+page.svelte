@@ -338,9 +338,9 @@ onMount(() => {
 		currentHandlers = handlers[handlerName];
 		currentHandlers.pointerdown(event, lastPointerX, lastPointerY, pressure);
 	});
-	canvas.addEventListener("pointermove", event => {
-		event.preventDefault();
+	document.addEventListener("pointermove", event => {
 		if (!pointerDown) return;
+		event.preventDefault();
 		const [pointerX, pointerY] = scaledPointerOffset(event);
 		if (pointerX === lastPointerX && pointerY === lastPointerY) return;
 		lastPointerX = pointerX;
@@ -348,15 +348,17 @@ onMount(() => {
 		const pressure = event.pointerType === "pen" ? event.pressure : 1;
 		currentHandlers.pointermove(event, lastPointerX, lastPointerY, pressure);
 	});
-	canvas.addEventListener("pointerup", event => {
-		event.preventDefault();
+	document.addEventListener("pointerup", event => {
 		if (!pointerDown) return;
+		event.preventDefault();
 		pointerDown = false;
 		currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 	});
+	/*
 	canvas.addEventListener("pointerleave", event => {
 		if (pointerDown) currentHandlers.pointerup(event);
 	});
+	*/
 	window.addEventListener("blur", event => {
 		if (pointerDown) currentHandlers.pointerup(event);
 	});
