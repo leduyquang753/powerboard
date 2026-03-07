@@ -15,15 +15,15 @@ let canvas;
 let canvasWidth = $state(0);
 let canvasHeight = $state(0);
 
-let context = $state(null);
-let pageBackground = $state(null);
+let context = $state.raw(null);
+let pageBackground = $state.raw(null);
 
-let bush = $state(new RBush());
-let orderMaintenance = $state(new OrderMaintenance());
+let bush = $state.raw(new RBush());
+let orderMaintenance = $state.raw(new OrderMaintenance());
 
 let offsetX = $state(0);
 let offsetY = $state(0);
-let currentStroke = $state(null);
+let currentStroke = $state.raw(null);
 
 let currentMode = $state("draw");
 let drawSize = $state(5);
