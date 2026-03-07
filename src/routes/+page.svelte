@@ -12,10 +12,12 @@ import ControlGroup from "./ControlGroup.svelte";
 
 let backgroundCanvas;
 let canvas;
+let activeStrokeCanvas;
 let canvasWidth = $state(0);
 let canvasHeight = $state(0);
 
 let context = $state.raw(null);
+let activeStrokeContext = $state.raw(null);
 let pageBackground = $state.raw(null);
 
 let bush = $state.raw(new RBush());
@@ -138,25 +140,21 @@ function render() {
 		*/
 		context.restore();
 	}
+	context.restore();
+}
+
+function renderActiveStroke() {
+	activeStrokeContext.clearRect(0, 0, canvasWidth, canvasHeight);
+	activeStrokeContext.save();
+	activeStrokeContext.translate(offsetX, offsetY);
 	if (currentStroke != null) {
 		generateStroke(currentStroke);
-		const stroke = currentStroke;
-		context.save();
-		/*
-		context.strokeStyle = stroke.color;
-		context.lineWidth = stroke.size;
-		const curves = stroke.simplifier.polycurve;
-		context.beginPath();
-		context.moveTo(curves[0][0][0], curves[0][0][1]);
-		for (const curve of curves)
-			context.bezierCurveTo(...curve.slice(1).flatMap(p => p));
-		context.stroke();
-		*/
-		context.fillStyle = currentStroke.color;
-		context.fill(currentStroke.outline);
-		context.restore();
+		activeStrokeContext.save();
+		activeStrokeContext.fillStyle = currentStroke.color;
+		activeStrokeContext.fill(currentStroke.outline);
+		activeStrokeContext.restore();
 	}
-	context.restore();
+	activeStrokeContext.restore();
 }
 
 function scaledPointerOffset(event) {
@@ -175,7 +173,7 @@ const handlers = {
 				simplifier: new LineSimplifier([pointerX - offsetX, pointerY - offsetY, pressure], drawSize)
 			};
 			currentStroke.spline = [...currentStroke.simplifier.spline.map(s => ({...s}))];
-			render();
+			renderActiveStroke();
 		},
 		pointermove: (event, pointerX, pointerY, pressure) => {
 			currentStroke.basePath.push([pointerX - offsetX, pointerY - offsetY, pressure]);
@@ -187,7 +185,7 @@ const handlers = {
 				currentStroke.spline.push({...newSpline[newSpline.length - 1]});
 			}
 			currentStroke.isSimple = currentStroke.basePath.length < 3;
-			render();
+			renderActiveStroke();
 		},
 		pointerup: (event, pointerX, pointerY) => {
 			currentStroke.isFinal = true;
@@ -214,6 +212,7 @@ const handlers = {
 			bush.insert(stroke);
 			currentStroke = null;
 			render();
+			renderActiveStroke();
 		}
 	},
 	erase: {
@@ -309,11 +308,17 @@ onMount(() => {
 	context.strokeStyle = "black";
 	context.fillStyle = "black";
 	context.lineCap = "round";
+	activeStrokeCanvas.width = canvasWidth;
+	activeStrokeCanvas.height = canvasHeight;
+	activeStrokeContext = activeStrokeCanvas.getContext("2d");
+	activeStrokeContext.strokeStyle = "black";
+	activeStrokeContext.fillStyle = "black";
+	activeStrokeContext.lineCap = "round";
 	pageBackground = new PageBackground(backgroundCanvas);
 	pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
 	pageBackground.render(offsetX, offsetY);
 
-	canvas.addEventListener("pointerdown", event => {
+	activeStrokeCanvas.addEventListener("pointerdown", event => {
 	  if (!buttonsToHandle.has(event.button)) return;
 		event.preventDefault();
 		pointerDown = true;
@@ -355,14 +360,14 @@ onMount(() => {
 		currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 	});
 	/*
-	canvas.addEventListener("pointerleave", event => {
+	activeStrokeCanvas.addEventListener("pointerleave", event => {
 		if (pointerDown) currentHandlers.pointerup(event);
 	});
 	*/
 	window.addEventListener("blur", event => {
 		if (pointerDown) currentHandlers.pointerup(event);
 	});
-	canvas.addEventListener("contextmenu", event => {
+	activeStrokeCanvas.addEventListener("contextmenu", event => {
 		event.preventDefault();
 	});
 	document.addEventListener("keydown", event => {
@@ -373,11 +378,13 @@ onMount(() => {
 			offsetY = 0;
 			pageBackground.render(offsetX, offsetY);
 			render();
+			renderActiveStroke();
 		} else if (event.key === " ") {
 			offsetX = 0;
 			offsetY = 0;
 			pageBackground.render(offsetX, offsetY);
 			render();
+			renderActiveStroke();
 		}
 	});
 	window.addEventListener("resize", event => {
@@ -386,9 +393,12 @@ onMount(() => {
 		canvasHeight = Math.round(root.clientHeight * window.devicePixelRatio);
 		canvas.width = canvasWidth;
 		canvas.height = canvasHeight;
+		activeStrokeCanvas.width = canvasWidth;
+		activeStrokeCanvas.height = canvasHeight;
 		pageBackground.updateCanvasSize(canvasWidth, canvasHeight);
 		pageBackground.render(offsetX, offsetY);
 		render();
+		renderActiveStroke();
 	});
 });
 </script>
@@ -424,6 +434,7 @@ canvas {
 
 <canvas bind:this={backgroundCanvas}></canvas>
 <canvas bind:this={canvas}></canvas>
+<canvas bind:this={activeStrokeCanvas}></canvas>
 <div class=controls>
 	<ControlGroup items={[
 		{key: "draw", text: "Draw"},
