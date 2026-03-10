@@ -158,7 +158,7 @@ function renderActiveStroke() {
 }
 
 function scaledPointerOffset(event) {
-	return [event.offsetX * window.devicePixelRatio, event.offsetY * window.devicePixelRatio];
+	return [event.clientX * window.devicePixelRatio, event.clientY * window.devicePixelRatio];
 }
 
 const handlers = {
