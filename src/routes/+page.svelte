@@ -1,4 +1,5 @@
 <script>
+import {Bezier} from "bezier-js";
 import RBush from "rbush";
 import {onMount} from "svelte";
 
@@ -9,6 +10,7 @@ import PageBackground from "$lib/core/PageBackground.js";
 import {eraseStroke} from "$lib/core/StrokeErasure.js";
 
 import ControlGroup from "./ControlGroup.svelte";
+import Menu from "./Menu.svelte";
 
 let backgroundCanvas;
 let canvas;
@@ -58,6 +60,12 @@ function interpolate(p1, p2, t) {
 	];
 }
 
+function compareStrokeOrder(a, b) {
+	const aTag = a.order.tag;
+	const bTag = b.order.tag;
+	return aTag > bTag ? 1 : aTag === bTag ? 0 : -1;
+}
+
 function generateStroke(stroke) {
 	const generated = generateOutlineAndBoundingBox(stroke);
 	//if (stroke.isFinal) console.log(generated.pathString);
@@ -100,11 +108,7 @@ function render() {
 		maxX: -offsetX + canvasWidth,
 		minY: -offsetY,
 		maxY: -offsetY + canvasHeight
-	}).sort((a, b) => {
-		const aTag = a.order.tag;
-		const bTag = b.order.tag;
-		return aTag > bTag ? 1 : aTag === bTag ? 0 : -1;
-	})) {
+	}).sort(compareStrokeOrder)) {
 		//if (stroke.simplifier.workingInputPoints.length === 1) continue;
 		context.save();
 		/*
@@ -159,6 +163,66 @@ function renderActiveStroke() {
 
 function scaledPointerOffset(event) {
 	return [event.clientX * window.devicePixelRatio, event.clientY * window.devicePixelRatio];
+}
+
+function onOpenWhiteboard() {
+	console.log("Open whiteboard.");
+	const input = document.createElement("input");
+	input.type = "file";
+	input.accept = ".pwb";
+	input.addEventListener("change", async () => {
+		if (input.files === null) return;
+		const data = JSON.parse(await input.files[0].text());
+		bush.clear();
+		currentStroke = null;
+		orderMaintenance = new OrderMaintenance();
+		offsetX = 0;
+		offsetY = 0;
+		for (const strokeData of data) {
+			strokeData.isFinal = true;
+			for (const segment of strokeData.spline) {
+				segment.bezier = new Bezier(segment.bezier);
+			}
+			strokeData.order = orderMaintenance.addNewAfter(orderMaintenance.tail);
+			generateStroke(strokeData);
+			bush.insert(strokeData);
+		}
+		pageBackground.render(offsetX, offsetY);
+		render();
+		renderActiveStroke();
+	});
+	input.showPicker();
+}
+
+function onSaveWhiteboard() {
+	console.log("Save whiteboard.");
+	const link = document.createElement("a");
+	const date = new Date();
+	link.download = (
+		`Whiteboard – ${date.getHours()}h${date.getMinutes().toString().padStart(2, '0')}.`
+		+ `${date.getSeconds().toString().padStart(2, '0')}; `
+		+ `${date.getDate()}-${date.getMonth()+1}-${date.getFullYear()}.pwb`
+	);
+	const url = URL.createObjectURL(new Blob([JSON.stringify(bush.all().sort(compareStrokeOrder).map(stroke => {
+		const strokeData = {
+			isSimple: stroke.isSimple,
+			size: stroke.size,
+			color: stroke.color
+		};
+		if (stroke.isSimple) {
+			strokeData.basePath = stroke.basePath;
+		} else {
+			strokeData.spline = stroke.spline.map(segment => ({
+				bezier: segment.bezier.points.map(point => ({x: point.x, y: point.y})),
+				startWeight: segment.startWeight,
+				endWeight: segment.endWeight
+			}));
+		}
+		return strokeData;
+	}))]));
+	link.href = url;
+	link.click();
+	setTimeout(() => { URL.revokeObjectURL(url); }, 1);
 }
 
 const handlers = {
@@ -359,11 +423,6 @@ onMount(() => {
 		pointerDown = false;
 		currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 	});
-	/*
-	activeStrokeCanvas.addEventListener("pointerleave", event => {
-		if (pointerDown) currentHandlers.pointerup(event);
-	});
-	*/
 	window.addEventListener("blur", event => {
 		if (pointerDown) currentHandlers.pointerup(event);
 	});
@@ -373,6 +432,7 @@ onMount(() => {
 	document.addEventListener("keydown", event => {
 		if (event.key === "Delete") {
 			bush.clear();
+			currentStroke = null;
 			orderMaintenance = new OrderMaintenance();
 			offsetX = 0;
 			offsetY = 0;
@@ -413,6 +473,10 @@ canvas {
 	touch-action: none;
 }
 
+:global(.disabledMenu) {
+	pointer-events: none;
+}
+
 .controls {
 	position: absolute;
 	bottom: 0;
@@ -427,7 +491,7 @@ canvas {
 	user-select: none;
 }
 
-.controls > :global(*) {
+.enabledControls > :global(*) {
 	pointer-events: auto;
 }
 </style>
@@ -435,7 +499,7 @@ canvas {
 <canvas bind:this={backgroundCanvas}></canvas>
 <canvas bind:this={canvas}></canvas>
 <canvas bind:this={activeStrokeCanvas}></canvas>
-<div class=controls>
+<div class={{controls: true, enabledControls: !pointerDown}}>
 	<ControlGroup items={[
 		{key: "draw", text: "Draw"},
 		{key: "erase", text: "Erase"},
@@ -459,3 +523,7 @@ canvas {
 		]} onSelect={onPanSelect}/>
 	{/if}
 </div>
+<Menu
+	class={{disabledMenu: pointerDown}}
+	onOpenWhiteboard={onOpenWhiteboard} onSaveWhiteboard={onSaveWhiteboard}
+/>

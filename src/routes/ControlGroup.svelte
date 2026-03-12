@@ -17,7 +17,7 @@ const {
 }
 
 .group > * {
-	background-color: white;
+	background-color: var(--controlBackground);
 	padding: 0.5em 1em;
 	cursor: pointer;
 }
@@ -27,7 +27,7 @@ const {
 }
 
 .group > :hover {
-	background-color: #EEEEEE;
+	background-color: var(--controlBackgroundHover);
 }
 
 .activeControl {
