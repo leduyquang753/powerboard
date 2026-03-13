@@ -166,7 +166,6 @@ function scaledPointerOffset(event) {
 }
 
 function onOpenWhiteboard() {
-	console.log("Open whiteboard.");
 	const input = document.createElement("input");
 	input.type = "file";
 	input.accept = ".pwb";
@@ -180,7 +179,7 @@ function onOpenWhiteboard() {
 		offsetY = 0;
 		for (const strokeData of data) {
 			strokeData.isFinal = true;
-			for (const segment of strokeData.spline) {
+			if (!strokeData.isSimple) for (const segment of strokeData.spline) {
 				segment.bezier = new Bezier(segment.bezier);
 			}
 			strokeData.order = orderMaintenance.addNewAfter(orderMaintenance.tail);
@@ -195,7 +194,6 @@ function onOpenWhiteboard() {
 }
 
 function onSaveWhiteboard() {
-	console.log("Save whiteboard.");
 	const link = document.createElement("a");
 	const date = new Date();
 	link.download = (
