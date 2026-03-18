@@ -244,6 +244,7 @@ const handlers = {
 			if (newSpline.length === currentStroke.spline.length) {
 				currentStroke.spline[currentStroke.spline.length - 1] = {...newSpline[newSpline.length - 1]};
 			} else {
+				currentStroke.spline[currentStroke.spline.length - 1] = {...newSpline[newSpline.length - 2]};
 				currentStroke.spline.push({...newSpline[newSpline.length - 1]});
 			}
 			currentStroke.isSimple = currentStroke.basePath.length < 3;

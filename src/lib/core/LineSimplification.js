@@ -61,18 +61,40 @@ export class LineSimplifier {
 		this.workingInputPoints = [firstPoint];
 	}
 
+	#startNewStroke() {
+		const beforeLastPoint = this.workingInputPoints.at(-3);
+		const newPoint = this.workingInputPoints.at(-1);
+		let newDirection = [newPoint[0] - beforeLastPoint[0], newPoint[1] - beforeLastPoint[1]];
+		const newDirectionLength = Math.sqrt(newDirection[0] * newDirection[0] + newDirection[1] * newDirection[1]);
+		if (newDirectionLength !== 0) {
+			newDirection = [newDirection[0] / newDirectionLength, newDirection[1] / newDirectionLength];
+			const newCurve = fitBezier(
+				this.workingInputPoints.slice(0, -1).map(point => point.slice(0, 2)),
+				this.lastDirection, [-newDirection[0], -newDirection[1]], MAX_ERROR, null
+			);
+			if (newCurve !== null) {
+				this.workingSegment = {
+					bezier: createBezier(...newCurve),
+					startWeight: this.workingSegment.startWeight,
+					endWeight: this.workingSegment.endWeight
+				};
+			}
+		}
+		this.finishedSegments.push(this.workingSegment);
+		this.lastDirection = newDirection;
+	}
+
 	addPoint(newPoint) {
 		const lastPoint = this.workingInputPoints.at(-1);
 		this.workingInputPoints.push(newPoint);
 		if (polylineHasNonLinearWeight(this.workingInputPoints, this.pressureTolerance)) {
-			this.finishedSegments.push(this.workingSegment);
-			this.lastDirection = getEndTangent(this.workingSegment);
+			this.#startNewStroke();
+			this.workingInputPoints = [lastPoint, newPoint];
 			this.workingSegment = {
 				bezier: createBezier(lastPoint, lastPoint, newPoint, newPoint),
 				startWeight: lastPoint[2],
 				endWeight: newPoint[2]
 			};
-			this.workingInputPoints = [lastPoint, newPoint];
 		}
 		const newCurve = fitBezier(
 			this.workingInputPoints.map(point => point.slice(0, 2)), this.lastDirection, null, MAX_ERROR, null
@@ -85,8 +107,7 @@ export class LineSimplifier {
 			};
 			return;
 		}
-		this.finishedSegments.push(this.workingSegment);
-		this.lastDirection = getEndTangent(this.workingSegment);
+		this.#startNewStroke();
 		this.workingInputPoints = [lastPoint, newPoint];
 		this.workingSegment = {
 			bezier: createBezier(...fitBezier(
