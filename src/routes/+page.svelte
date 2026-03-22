@@ -1,7 +1,7 @@
 <script>
 import {Bezier} from "bezier-js";
 import RBush from "rbush";
-import {onMount} from "svelte";
+import {onMount, untrack} from "svelte";
 
 import {LineSimplifier} from "$lib/core/LineSimplification.js";
 import OrderMaintenance from "$lib/core/OrderMaintenance.js";
@@ -10,7 +10,16 @@ import PageBackground from "$lib/core/PageBackground.js";
 import {eraseStroke} from "$lib/core/StrokeErasure.js";
 
 import ControlGroup from "./ControlGroup.svelte";
+import DrawOptions from "./DrawOptions.svelte";
+import EraseOptions from "./EraseOptions.svelte";
 import Menu from "./Menu.svelte";
+
+let {data: initialData} = $props();
+const initialConfig = (() => initialData.config === null ? {
+	favoriteDrawSizes: [3, 5, 10],
+	favoriteDrawColors: ["#000000", "#FF0000", "#0000FF"],
+	favoriteEraseSizes: [10, 50, 100, 200, 400]
+} : initialData.config)();
 
 let backgroundCanvas;
 let canvas;
@@ -35,6 +44,10 @@ let drawColor = $state("#000000");
 let eraseSize = $state(100);
 let eraseWholeStroke = $state(false);
 
+let favoriteDrawSizes = $state(initialConfig.favoriteDrawSizes);
+let favoriteDrawColors = $state(initialConfig.favoriteDrawColors);
+let favoriteEraseSizes = $state(initialConfig.favoriteEraseSizes);
+
 let pointerDown = $state(false);
 let originalOffsetX = $state(0);
 let originalOffsetY = $state(0);
@@ -42,6 +55,21 @@ let firstMouseX = $state(0);
 let firstMouseY = $state(0);
 let lastPointerX = $state(0);
 let lastPointerY = $state(0);
+
+let configLoaded = $state(false);
+const config = $derived({
+	favoriteDrawSizes: [...favoriteDrawSizes],
+	favoriteDrawColors: [...favoriteDrawColors],
+	favoriteEraseSizes: [...favoriteEraseSizes]
+});
+$effect(() => {
+	config;
+	if (untrack(() => !configLoaded)) {
+		configLoaded = true;
+		return;
+	}
+	window.localStorage.setItem("config", JSON.stringify(config));
+});
 
 let currentHandlers = $state(null);
 
@@ -384,6 +412,7 @@ onMount(() => {
 	activeStrokeCanvas.addEventListener("pointerdown", event => {
 	  if (!buttonsToHandle.has(event.button)) return;
 		event.preventDefault();
+		document.activeElement.blur();
 		pointerDown = true;
 		[lastPointerX, lastPointerY] = scaledPointerOffset(event);
 		const pressure = event.pointerType === "pen" ? event.pressure : 1;
@@ -478,16 +507,42 @@ canvas {
 
 .controls {
 	position: absolute;
-	bottom: 0;
 	left: 0;
+	top: 0;
 	width: 100dvw;
-	padding: 1em;
+	height: 100dvh;
+	padding: 6rem 1rem 1rem 1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	pointer-events: none;
+	user-select: none;
+}
+
+.sideControlsContainer {
+	flex: 1;
+	min-height: 0;
+	position: relative;
+	container: sideControls / size;
+}
+
+.sideControls {
+	width: fit-content;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: start;
+	align-content: start;
+	flex-wrap: wrap;
+	gap: 1rem;
+}
+
+.bottomControls {
+	align-self: stretch;
 	display: flex;
 	flex-direction: row;
 	justify-content: center;
 	gap: 1em;
-	pointer-events: none;
-	user-select: none;
 }
 
 .enabledControls > :global(*) {
@@ -498,31 +553,35 @@ canvas {
 <canvas bind:this={backgroundCanvas}></canvas>
 <canvas bind:this={canvas}></canvas>
 <canvas bind:this={activeStrokeCanvas}></canvas>
-<div class={{controls: true, enabledControls: !pointerDown}}>
-	<ControlGroup items={[
-		{key: "draw", text: "Draw"},
-		{key: "erase", text: "Erase"},
-		{key: "pan", text: "Pan"}
-	]} activeItem={currentMode} onSelect={onModeSelect}/>
-	{#if currentMode === "draw"}
-		<ControlGroup items={[
-			{key: "color", text: `Color: ${drawColor}`},
-			{key: "size", text: `Size: ${drawSize}`}
-		]} onSelect={key => { onDrawSelect[key](); }}/>
-	{/if}
-	{#if currentMode === "erase"}
-		<ControlGroup items={[
-			{key: "mode", text: `Mode: ${eraseWholeStroke ? "whole" : "partial"}`},
-			{key: "size", text: `Size: ${eraseSize}`}
-		]} onSelect={key => { onEraseSelect[key](); }}/>
-	{/if}
-	{#if currentMode === "pan"}
-		<ControlGroup items={[
-			{key: "reset", text: "Reset"}
-		]} onSelect={onPanSelect}/>
-	{/if}
-</div>
 <Menu
 	class={{disabledMenu: pointerDown}}
 	onOpenWhiteboard={onOpenWhiteboard} onSaveWhiteboard={onSaveWhiteboard}
 />
+<div class="controls">
+	<div class=sideControlsContainer>
+		<div class={{sideControls: true, enabledControls: !pointerDown}}>
+			{#if currentMode === "draw"}
+				<DrawOptions bind:drawSize bind:favoriteDrawSizes bind:drawColor bind:favoriteDrawColors/>
+			{:else if currentMode === "erase"}
+				<EraseOptions bind:eraseSize bind:favoriteEraseSizes/>
+			{/if}
+		</div>
+	</div>
+	<div class={{bottomControls: true, enabledControls: !pointerDown}}>
+		<ControlGroup items={[
+			{key: "draw", text: "Draw"},
+			{key: "erase", text: "Erase"},
+			{key: "pan", text: "Pan"}
+		]} activeItem={currentMode} onSelect={onModeSelect}/>
+		{#if currentMode === "erase"}
+			<ControlGroup items={[
+				{key: "mode", text: `Mode: ${eraseWholeStroke ? "whole" : "partial"}`}
+			]} onSelect={key => { onEraseSelect[key](); }}/>
+		{/if}
+		{#if currentMode === "pan"}
+			<ControlGroup items={[
+				{key: "reset", text: "Reset"}
+			]} onSelect={onPanSelect}/>
+		{/if}
+	</div>
+</div>

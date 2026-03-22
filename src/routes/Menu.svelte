@@ -16,6 +16,8 @@ const {
 let shouldPlayAnimation = $state(false);
 let expanded = $state(false);
 
+const menuContentTabIndex = $derived(expanded ? 0 : -1);
+
 function expandMenu() {
 	expanded = true;
 	shouldPlayAnimation = true;
@@ -49,6 +51,7 @@ function onSaveWhiteboard() {
 	box-shadow: 0 0 8px rgb(0 0 0 / 50%);
 	transform-origin: top left;
 	user-select: none;
+	z-index: 1;
 }
 
 .menu:not(.expandedMenu):hover {
@@ -113,6 +116,7 @@ function onSaveWhiteboard() {
 }
 
 .menuButtonContainer, .closeButtonContainer {
+	border-radius: 2rem;
 	cursor: pointer;
 }
 
@@ -217,6 +221,10 @@ function onSaveWhiteboard() {
 	transition: opacity 0.2s;
 }
 
+.menu:not(.expandedMenu) > .menuContents {
+	pointer-events: none;
+}
+
 .expandedMenu > .menuContents {
 	opacity: 1;
 	transition: opacity 0.5s;
@@ -256,37 +264,37 @@ function onSaveWhiteboard() {
 </style>
 
 <div class={["menu", {expandedMenu: expanded, shouldPlayAnimation}, classes]}>
+	<div
+		class=menuButtonContainer role=button tabindex={expanded ? -1 : 0} aria-label=Menu
+		onclick={expandMenu} onkeydown={event => { activateButtonFromKeyboard(event, expandMenu); }}
+	>
+		<IconMenu/>
+	</div>
+	<div
+		class=closeButtonContainer role=button tabindex={menuContentTabIndex} aria-label=Close
+		onclick={collapseMenu} onkeydown={event => { activateButtonFromKeyboard(event, collapseMenu); }}
+	>
+		<IconCloseRounded/>
+	</div>
 	<div class=menuContents>
 		<div class=menuTitle>PowerBoard</div>
 		<div
-			class=menuEntry role=button tabindex=0
+			class=menuEntry role=button tabindex={menuContentTabIndex}
 			onclick={onOpenWhiteboard} onkeydown={event => { activateButtonFromKeyboard(event, onOpenWhiteboard); }}
 		>
 			<div><IconFolderOpenRounded/></div>
 			<div>Open whiteboard</div>
 		</div>
 		<div
-			class=menuEntry role=button tabindex=0
+			class=menuEntry role=button tabindex={menuContentTabIndex}
 			onclick={onSaveWhiteboard} onkeydown={event => { activateButtonFromKeyboard(event, onSaveWhiteboard); }}
 		>
 			<div><IconSaveRounded/></div>
 			<div>Save whiteboard</div>
 		</div>
-		<!--div class=menuEntry role=button tabindex=0>
+		<!--div class=menuEntry role=button tabindex={menuContentTabIndex}>
 			<div><IconSettingsRounded/></div>
 			<div>Settings</div>
 		</div-->
-	</div>
-	<div
-		class=menuButtonContainer role=button tabindex=0 aria-label=Menu
-		onclick={expandMenu} onkeydown={event => { activateButtonFromKeyboard(event, expandMenu); }}
-	>
-		<IconMenu/>
-	</div>
-	<div
-		class=closeButtonContainer role=button tabindex=0 aria-label=Close
-		onclick={collapseMenu} onkeydown={event => { activateButtonFromKeyboard(event, collapseMenu); }}
-	>
-		<IconCloseRounded/>
 	</div>
 </div>
