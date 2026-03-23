@@ -66,9 +66,9 @@ function removeDrawColorFromFavorites() {
 	box-shadow: 0 0 4px rgb(0 0 0 / 50%);
 }
 
-@container sideControls (height >= 31rem) {
+@container sideControls (height >= 25rem + 6px) {
 	.controlGroup {
-		max-height: max(15rem, (100% - 1rem) / 2);
+		max-height: calc((100% - 1rem) / 2);
 	}
 }
 
@@ -114,7 +114,16 @@ function removeDrawColorFromFavorites() {
 }
 
 .activeFavoriteButton {
-	color: #0078D4;
+	color: var(--activeAccentColor);
+}
+
+.separator {
+	align-self: center;
+	flex-shrink: 0;
+	width: 2rem;
+	height: 1px;
+	margin: 1px 0;
+	background: gray;
 }
 
 .favorites {
@@ -129,6 +138,23 @@ function removeDrawColorFromFavorites() {
 	scrollbar-color: gray transparent;
 }
 
+.drawSizeDisplay {
+	min-width: 3rem;
+	min-height: 3rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	border-radius: 1.5rem;
+}
+
+.activeFavoriteDrawSizeDisplay {
+	background: radial-gradient(
+		rgb(from var(--activeAccentColor) r g b / 40%),
+		rgb(from var(--activeAccentColor) r g b / 0%) 1.5rem
+	);
+}
+
 .editor {
 	align-self: stretch;
 	display: flex;
@@ -137,6 +163,19 @@ function removeDrawColorFromFavorites() {
 	gap: 1rem;
 	padding: 0.5rem;
 	overflow-y: auto;
+}
+
+.drawSizeEditorHeaderRow, .drawColorEditorHeaderRow {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.drawColorEditorHeaderRow {
+	align-self: stretch;
+	margin: 0 1rem;
 }
 
 .drawSizeInput {
@@ -170,10 +209,12 @@ function removeDrawColorFromFavorites() {
 	border: 1px solid black;
 }
 
+.activeFavoriteDrawColorDisplay {
+	box-shadow: 0 0 4px 2px black;
+}
+
 .drawColorPreview {
-	flex-shrink: 0;
-	align-self: stretch;
-	margin: 0 1rem;
+	flex: 1 0 auto;
 	height: 2rem;
 	border-radius: 0.5rem;
 	background: var(--displayed-color);
@@ -193,25 +234,7 @@ function removeDrawColorFromFavorites() {
 				<div class=drawSizeDisplay>{drawSize}</div>
 			{/if}
 		</div></div>
-		{#if currentDrawSizeIsFavorite}
-			<div
-				class="button favoriteButton activeFavoriteButton"
-				role=button tabindex=0 aria-label="Remove draw size from favorites"
-				onclick={removeDrawSizeFromFavorites}
-				onkeydown={event => { activateButtonFromKeyboard(event, removeDrawSizeFromFavorites); }}
-			><div>
-				<IconStarRounded/>
-			</div></div>
-		{:else}
-			<div
-				class="button favoriteButton"
-				role=button tabindex=0 aria-label="Add draw size to favorites"
-				onclick={addDrawSizeToFavorites}
-				onkeydown={event => { activateButtonFromKeyboard(event, addDrawSizeToFavorites); }}
-			><div>
-				<IconStarOutlineRounded/>
-			</div></div>
-		{/if}
+		<div class=separator></div>
 		<div class=favorites>
 			{#each favoriteDrawSizes as favoriteDrawSize}
 				<div
@@ -220,21 +243,45 @@ function removeDrawColorFromFavorites() {
 					onclick={() => { drawSize = favoriteDrawSize; }}
 					onkeydown={event => { activateButtonFromKeyboard(event, () => { drawSize = favoriteDrawSize; }); }}
 				><div>
-					<div class=drawSizeDisplay>{favoriteDrawSize}</div>
+					<div class={{
+						drawSizeDisplay: true,
+						activeFavoriteDrawSizeDisplay: favoriteDrawSize === drawSize
+					}}>{favoriteDrawSize}</div>
 				</div></div>
 			{/each}
 		</div>
 	</div>
 	{#if drawSizeExpanded}
 		<div class=editor>
-			<input
-				type=number min=1 max=100 step=1
-				bind:value={
-					() => drawSize.toString(),
-					newValue => { drawSize = Math.min(Math.max(newValue ?? drawSize, 1), 100); }
-				}
-				class=drawSizeInput
-			>
+			<div class=drawSizeEditorHeaderRow>
+				<input
+					type=number min=1 max=100 step=1
+					bind:value={
+						() => drawSize.toString(),
+						newValue => { drawSize = Math.min(Math.max(newValue ?? drawSize, 1), 100); }
+					}
+					class=drawSizeInput
+				>
+				{#if currentDrawSizeIsFavorite}
+					<div
+						class="button favoriteButton activeFavoriteButton"
+						role=button tabindex=0 aria-label="Remove draw size from favorites"
+						onclick={removeDrawSizeFromFavorites}
+						onkeydown={event => { activateButtonFromKeyboard(event, removeDrawSizeFromFavorites); }}
+					><div>
+						<IconStarRounded/>
+					</div></div>
+				{:else}
+					<div
+						class="button favoriteButton"
+						role=button tabindex=0 aria-label="Add draw size to favorites"
+						onclick={addDrawSizeToFavorites}
+						onkeydown={event => { activateButtonFromKeyboard(event, addDrawSizeToFavorites); }}
+					><div>
+						<IconStarOutlineRounded/>
+					</div></div>
+				{/if}
+			</div>
 			<div class=drawSizeSlider>
 				<!--Slider orientation=vertical min={1} max={100} step={1} bind:value={drawSize}/-->
 				<input type=range min=1 max=100 step=1 bind:value={drawSize}>
@@ -255,25 +302,7 @@ function removeDrawColorFromFavorites() {
 				<div class=drawColorDisplay style:--displayed-color={drawColor}></div>
 			{/if}
 		</div></div>
-		{#if currentDrawColorIsFavorite}
-			<div
-				class="button favoriteButton activeFavoriteButton"
-				role=button tabindex=0 aria-label="Remove draw color from favorites"
-				onclick={removeDrawColorFromFavorites}
-				onkeydown={event => { activateButtonFromKeyboard(event, removeDrawColorFromFavorites); }}
-			><div>
-				<IconStarRounded/>
-			</div></div>
-		{:else}
-			<div
-				class="button favoriteButton"
-				role=button tabindex=0 aria-label="Add draw color to favorites"
-				onclick={addDrawColorToFavorites}
-				onkeydown={event => { activateButtonFromKeyboard(event, addDrawColorToFavorites); }}
-			><div>
-				<IconStarOutlineRounded/>
-			</div></div>
-		{/if}
+		<div class=separator></div>
 		<div class=favorites>
 			{#each favoriteDrawColors as favoriteDrawColor}
 				<div
@@ -284,14 +313,41 @@ function removeDrawColorFromFavorites() {
 						activateButtonFromKeyboard(event, () => { drawColor = favoriteDrawColor; });
 					}}
 				><div>
-					<div class=drawColorDisplay style:--displayed-color={favoriteDrawColor}></div>
+					<div
+						class={{
+							drawColorDisplay: true,
+							activeFavoriteDrawColorDisplay: favoriteDrawColor === drawColor
+						}}
+						style:--displayed-color={favoriteDrawColor}
+					></div>
 				</div></div>
 			{/each}
 		</div>
 	</div>
 	{#if drawColorExpanded}
 		<div class=editor>
-			<div class=drawColorPreview style:--displayed-color={drawColor}></div>
+			<div class=drawColorEditorHeaderRow>
+				<div class=drawColorPreview style:--displayed-color={drawColor}></div>
+				{#if currentDrawColorIsFavorite}
+					<div
+						class="button favoriteButton activeFavoriteButton"
+						role=button tabindex=0 aria-label="Remove draw color from favorites"
+						onclick={removeDrawColorFromFavorites}
+						onkeydown={event => { activateButtonFromKeyboard(event, removeDrawColorFromFavorites); }}
+					><div>
+						<IconStarRounded/>
+					</div></div>
+				{:else}
+					<div
+						class="button favoriteButton"
+						role=button tabindex=0 aria-label="Add draw color to favorites"
+						onclick={addDrawColorToFavorites}
+						onkeydown={event => { activateButtonFromKeyboard(event, addDrawColorToFavorites); }}
+					><div>
+						<IconStarOutlineRounded/>
+					</div></div>
+				{/if}
+			</div>
 			<ColorPicker
 				bind:hex={
 					() => drawColor,

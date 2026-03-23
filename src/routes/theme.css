@@ -1,4 +1,5 @@
 :root {
 	--controlBackground: white;
 	--controlBackgroundHover: #EEEEEE;
+	--activeAccentColor: #0078D4;
 }

@@ -12,6 +12,7 @@ import {eraseStroke} from "$lib/core/StrokeErasure.js";
 import ControlGroup from "./ControlGroup.svelte";
 import DrawOptions from "./DrawOptions.svelte";
 import EraseOptions from "./EraseOptions.svelte";
+import PanOptions from "./PanOptions.svelte";
 import Menu from "./Menu.svelte";
 
 let {data: initialData} = $props();
@@ -354,35 +355,7 @@ function onModeSelect(newMode) {
 	currentMode = newMode;
 }
 
-const onDrawSelect = {
-	"color": () => {
-		const color = prompt("Enter color as 3-digit or 6-digit hexadecimal code:");
-		if (color === null || !color.match(/^[0-9A-F]{3}(?:[0-9A-F]{3})?$/i)) return;
-		drawColor = "#" + color.toUpperCase();
-	},
-	"size": () => {
-		const sizeString = prompt("Enter pen size:");
-		if (sizeString === null || sizeString === "") return;
-		const size = Number(sizeString);
-		if (Number.isNaN(size)) return;
-		drawSize = Math.max(1, Math.min(100, size));
-	}
-};
-
-const onEraseSelect = {
-	"mode": () => {
-		eraseWholeStroke = !eraseWholeStroke;
-	},
-	"size": () => {
-		const sizeString = prompt("Enter eraser size:");
-		if (sizeString === null || sizeString === "") return;
-		const size = Number(sizeString);
-		if (Number.isNaN(size)) return;
-		eraseSize = Math.max(1, Math.min(1000, size));
-	}
-};
-
-function onPanSelect() {
+function onResetPan() {
 	offsetX = 0;
 	offsetY = 0;
 	pageBackground.render(offsetX, offsetY);
@@ -533,8 +506,11 @@ canvas {
 	flex-direction: column;
 	align-items: start;
 	align-content: start;
-	flex-wrap: wrap;
 	gap: 1rem;
+}
+
+.wrappingSideControls {
+	flex-wrap: wrap;
 }
 
 .bottomControls {
@@ -559,11 +535,13 @@ canvas {
 />
 <div class="controls">
 	<div class=sideControlsContainer>
-		<div class={{sideControls: true, enabledControls: !pointerDown}}>
+		<div class={{sideControls: true, wrappingSideControls: currentMode === "draw", enabledControls: !pointerDown}}>
 			{#if currentMode === "draw"}
 				<DrawOptions bind:drawSize bind:favoriteDrawSizes bind:drawColor bind:favoriteDrawColors/>
 			{:else if currentMode === "erase"}
-				<EraseOptions bind:eraseSize bind:favoriteEraseSizes/>
+				<EraseOptions bind:eraseWholeStroke bind:eraseSize bind:favoriteEraseSizes/>
+			{:else if currentMode === "pan"}
+				<PanOptions onResetPan={onResetPan}/>
 			{/if}
 		</div>
 	</div>
@@ -573,15 +551,5 @@ canvas {
 			{key: "erase", text: "Erase"},
 			{key: "pan", text: "Pan"}
 		]} activeItem={currentMode} onSelect={onModeSelect}/>
-		{#if currentMode === "erase"}
-			<ControlGroup items={[
-				{key: "mode", text: `Mode: ${eraseWholeStroke ? "whole" : "partial"}`}
-			]} onSelect={key => { onEraseSelect[key](); }}/>
-		{/if}
-		{#if currentMode === "pan"}
-			<ControlGroup items={[
-				{key: "reset", text: "Reset"}
-			]} onSelect={onPanSelect}/>
-		{/if}
 	</div>
 </div>
