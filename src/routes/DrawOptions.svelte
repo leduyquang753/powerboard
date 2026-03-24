@@ -205,19 +205,19 @@ function removeDrawColorFromFavorites() {
 	width: 2rem;
 	height: 2rem;
 	border-radius: 1rem;
-	background: var(--displayed-color);
+	background: var(--displayedColor);
 	border: 1px solid black;
 }
 
 .activeFavoriteDrawColorDisplay {
-	box-shadow: 0 0 4px 2px black;
+	box-shadow: 0 0 4px 2px var(--activeAccentColor);
 }
 
 .drawColorPreview {
 	flex: 1 0 auto;
 	height: 2rem;
 	border-radius: 0.5rem;
-	background: var(--displayed-color);
+	background: var(--displayedColor);
 }
 </style>
 
@@ -299,7 +299,7 @@ function removeDrawColorFromFavorites() {
 			{#if drawColorExpanded}
 				<div class=collapseIcon><IconChevronLeftRounded/></div>
 			{:else}
-				<div class=drawColorDisplay style:--displayed-color={drawColor}></div>
+				<div class=drawColorDisplay style:--displayedColor={drawColor}></div>
 			{/if}
 		</div></div>
 		<div class=separator></div>
@@ -318,7 +318,7 @@ function removeDrawColorFromFavorites() {
 							drawColorDisplay: true,
 							activeFavoriteDrawColorDisplay: favoriteDrawColor === drawColor
 						}}
-						style:--displayed-color={favoriteDrawColor}
+						style:--displayedColor={favoriteDrawColor}
 					></div>
 				</div></div>
 			{/each}
@@ -327,7 +327,7 @@ function removeDrawColorFromFavorites() {
 	{#if drawColorExpanded}
 		<div class=editor>
 			<div class=drawColorEditorHeaderRow>
-				<div class=drawColorPreview style:--displayed-color={drawColor}></div>
+				<div class=drawColorPreview style:--displayedColor={drawColor}></div>
 				{#if currentDrawColorIsFavorite}
 					<div
 						class="button favoriteButton activeFavoriteButton"

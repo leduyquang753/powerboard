@@ -1,5 +1,6 @@
 <script>
 import IconCloseRounded from "~icons/material-symbols/close-rounded";
+import IconFileExportRounded from "~icons/material-symbols/file-export-rounded";
 import IconFolderOpenRounded from "~icons/material-symbols/folder-open-rounded";
 import IconMenu from "~icons/material-symbols/menu";
 import IconSaveRounded from "~icons/material-symbols/save-rounded";
@@ -10,7 +11,8 @@ import {activateButtonFromKeyboard} from "$lib/utils/ButtonActivation.js";
 const {
 	"class": classes,
 	onOpenWhiteboard: openWhiteboardCallback,
-	onSaveWhiteboard: saveWhiteboardCallback
+	onSaveWhiteboard: saveWhiteboardCallback,
+	onExportWhiteboard: exportWhiteboardCallback
 } = $props();
 
 let shouldPlayAnimation = $state(false);
@@ -34,6 +36,11 @@ function onOpenWhiteboard() {
 
 function onSaveWhiteboard() {
 	saveWhiteboardCallback();
+	collapseMenu();
+}
+
+function onExportWhiteboard() {
+	exportWhiteboardCallback();
 	collapseMenu();
 }
 </script>
@@ -291,6 +298,13 @@ function onSaveWhiteboard() {
 		>
 			<div><IconSaveRounded/></div>
 			<div>Save whiteboard</div>
+		</div>
+		<div
+			class=menuEntry role=button tabindex={menuContentTabIndex}
+			onclick={onExportWhiteboard} onkeydown={event => { activateButtonFromKeyboard(event, onExportWhiteboard); }}
+		>
+			<div><IconFileExportRounded/></div>
+			<div>Export whiteboard as SVG</div>
 		</div>
 		<!--div class=menuEntry role=button tabindex={menuContentTabIndex}>
 			<div><IconSettingsRounded/></div>

@@ -98,6 +98,7 @@ function compareStrokeOrder(a, b) {
 function generateStroke(stroke) {
 	const generated = generateOutlineAndBoundingBox(stroke);
 	//if (stroke.isFinal) console.log(generated.pathString);
+	stroke.pathString = generated.pathString;
 	stroke.outline = new Path2D(generated.pathString);
 	stroke.minX = generated.minX;
 	stroke.minY = generated.minY;
@@ -222,34 +223,67 @@ function onOpenWhiteboard() {
 	input.showPicker();
 }
 
-function onSaveWhiteboard() {
+function downloadFile(content, fileExtension) {
 	const link = document.createElement("a");
 	const date = new Date();
 	link.download = (
 		`Whiteboard – ${date.getHours()}h${date.getMinutes().toString().padStart(2, '0')}.`
 		+ `${date.getSeconds().toString().padStart(2, '0')}; `
-		+ `${date.getDate()}-${date.getMonth()+1}-${date.getFullYear()}.pwb`
+		+ `${date.getDate()}-${date.getMonth()+1}-${date.getFullYear()}.${fileExtension}`
 	);
-	const url = URL.createObjectURL(new Blob([JSON.stringify(bush.all().sort(compareStrokeOrder).map(stroke => {
-		const strokeData = {
-			isSimple: stroke.isSimple,
-			size: stroke.size,
-			color: stroke.color
-		};
-		if (stroke.isSimple) {
-			strokeData.basePath = stroke.basePath;
-		} else {
-			strokeData.spline = stroke.spline.map(segment => ({
-				bezier: segment.bezier.points.map(point => ({x: point.x, y: point.y})),
-				startWeight: segment.startWeight,
-				endWeight: segment.endWeight
-			}));
-		}
-		return strokeData;
-	}))]));
+	const url = URL.createObjectURL(new Blob([content]));
 	link.href = url;
 	link.click();
 	setTimeout(() => { URL.revokeObjectURL(url); }, 1);
+}
+
+function onSaveWhiteboard() {
+	downloadFile(
+		JSON.stringify(bush.all().sort(compareStrokeOrder).map(stroke => {
+			const strokeData = {
+				isSimple: stroke.isSimple,
+				size: stroke.size,
+				color: stroke.color
+			};
+			if (stroke.isSimple) {
+				strokeData.basePath = stroke.basePath;
+			} else {
+				strokeData.spline = stroke.spline.map(segment => ({
+					bezier: segment.bezier.points.map(point => ({x: point.x, y: point.y})),
+					startWeight: segment.startWeight,
+					endWeight: segment.endWeight
+				}));
+			}
+			return strokeData;
+		})),
+		"pwb"
+	);
+}
+
+function onExportWhiteboard() {
+	const strokes = bush.all();
+	if (strokes.length === 0) {
+		downloadFile(
+			`<svg version="1.1" width="10" height="10" xmlns="http://www.w3.org/2000/svg"></svg>`,
+			"svg"
+		);
+		return;
+	}
+	const minX = Math.min(...strokes.map(stroke => stroke.minX));
+	const minY = Math.min(...strokes.map(stroke => stroke.minY));
+	const maxX = Math.max(...strokes.map(stroke => stroke.maxX));
+	const maxY = Math.max(...strokes.map(stroke => stroke.maxY));
+	const width = maxX - minX;
+	const height = maxY - minY;
+	let svg
+		= `<svg version="1.1" `
+		+ `width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}" `
+		+ `xmlns="http://www.w3.org/2000/svg">`;
+	for (const stroke of strokes) {
+		svg += `<path d="${stroke.pathString}" fill="${stroke.color}"/>`;
+	}
+	svg += "</svg>";
+	downloadFile(svg, "svg");
 }
 
 const handlers = {
@@ -383,7 +417,9 @@ onMount(() => {
 	pageBackground.render(offsetX, offsetY);
 
 	activeStrokeCanvas.addEventListener("pointerdown", event => {
-	  if (!buttonsToHandle.has(event.button)) return;
+		if (
+			!buttonsToHandle.has(event.button)
+		) return;
 		event.preventDefault();
 		document.activeElement.blur();
 		pointerDown = true;
@@ -531,7 +567,7 @@ canvas {
 <canvas bind:this={activeStrokeCanvas}></canvas>
 <Menu
 	class={{disabledMenu: pointerDown}}
-	onOpenWhiteboard={onOpenWhiteboard} onSaveWhiteboard={onSaveWhiteboard}
+	onOpenWhiteboard={onOpenWhiteboard} onSaveWhiteboard={onSaveWhiteboard} onExportWhiteboard={onExportWhiteboard}
 />
 <div class="controls">
 	<div class=sideControlsContainer>
