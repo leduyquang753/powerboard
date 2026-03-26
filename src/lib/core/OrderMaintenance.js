@@ -12,11 +12,12 @@ export default class OrderMaintenance {
 	constructor() {
 		this.tagBits = 32n;
 		this.maxTag = (1n << this.tagBits) - 1n;
-		this.tail = {
+		this.head = {
 			tag: 0n,
 			previous: null,
 			next: null
 		};
+		this.tail = this.head;
 	}
 
 	#insertNode(previous) {
