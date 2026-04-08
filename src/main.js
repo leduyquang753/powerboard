@@ -44,6 +44,7 @@ let offsetY = 0;
 let currentStroke = null;
 
 let currentMode = 0;
+let previousMode = null;
 let drawSize = 4;
 let drawColor = "#000000";
 let eraseSize = 40;
@@ -340,12 +341,18 @@ document.addEventListener("keydown", event => {
 		pageBackground.render(offsetX, offsetY);
 		render();
 	} else if (event.key === " ") {
-		offsetX = 0;
-		offsetY = 0;
-		pageBackground.render(offsetX, offsetY);
-		render();
+		if (previousMode === null) {
+			previousMode = currentMode;
+		}
+		currentMode = 2;
 	}
 });
+document.addEventListener("keyup", event => {
+	if (event.key === " ") {
+		currentMode = previousMode;
+		previousMode = null;
+	}
+})
 window.addEventListener("resize", event => {
 	canvasWidth = Math.round(window.innerWidth * window.devicePixelRatio);
 	canvasHeight = Math.round(window.innerHeight * window.devicePixelRatio);
