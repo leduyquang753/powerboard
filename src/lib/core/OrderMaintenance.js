@@ -20,22 +20,22 @@ export default class OrderMaintenance {
 		this.tail = this.head;
 	}
 
-	#insertNode(previous) {
+	#insertNode(previous, node) {
 		const next = previous.next;
 		const nextTag = next === null ? this.maxTag + 1n : next.tag;
-		const node = {
-			tag: previous.tag + (nextTag - previous.tag) / 2n,
-			previous, next
-		};
+		node.tag = previous.tag + (nextTag - previous.tag) / 2n;
+		node.previous = previous;
+		node.next = next;
 		previous.next = node;
 		if (next === null) this.tail = node;
 		else next.previous = node;
 		return node;
 	}
 
-	addNewAfter(ancestor) {
+	addAfter(ancestor, node = null) {
+		node ??= {};
 		// If there is available space, use it.
-		if (ancestor.next === null && ancestor.tag != this.maxTag) return this.#insertNode(ancestor);
+		if (ancestor.next === null && ancestor.tag != this.maxTag) return this.#insertNode(ancestor, node);
 		// Find the smallest tag range that is not overflowing.
 		let elementsInRange = 1n;
 		let rangeFirst = ancestor;
@@ -73,7 +73,7 @@ export default class OrderMaintenance {
 			ancestor.tag === this.maxTag
 			|| (ancestor.next !== null && ancestor.tag === ancestor.next.tag + 1n)
 		) throw new Error("Order maintenance bug: space is not properly cleared.");
-		return this.#insertNode(ancestor);
+		return this.#insertNode(ancestor, node);
 	}
 
 	remove(node) {
@@ -81,5 +81,7 @@ export default class OrderMaintenance {
 		if (previous !== null) previous.next = node.next;
 		if (node.next === null) this.tail = previous;
 		else node.next.previous = previous;
+		node.previous = null;
+		node.next = null;
 	}
 }

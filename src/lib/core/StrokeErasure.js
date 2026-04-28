@@ -30,7 +30,8 @@ function makeSecondDerivativeFunction(points) {
 */
 
 function erasePointOrLine(points, minX, minY, maxX, maxY) {
-	if (points.length === 1) return pointInsideRectangle({x: points[0][0], y: points[0][1]}, minX, minY, maxX, maxY) ? [] : null;
+	if (points.length === 1)
+		return pointInsideRectangle({x: points[0][0], y: points[0][1]}, minX, minY, maxX, maxY) ? [] : null;
 	const point1 = points[0];
 	const point2 = points[1];
 	const bx = point1[0];

@@ -12,8 +12,11 @@ import {eraseStroke} from "$lib/core/StrokeErasure.js";
 import ControlGroup from "./ControlGroup.svelte";
 import DrawOptions from "./DrawOptions.svelte";
 import EraseOptions from "./EraseOptions.svelte";
-import PanOptions from "./PanOptions.svelte";
 import Menu from "./Menu.svelte";
+import PanOptions from "./PanOptions.svelte";
+import UndoRedoButtons from "./UndoRedoButtons.svelte";
+
+const HISTORY_LIMIT = 100;
 
 let {data: initialData} = $props();
 const initialConfig = (() => initialData.config === null ? {
@@ -56,6 +59,11 @@ let firstMouseX = $state(0);
 let firstMouseY = $state(0);
 let lastPointerX = $state(0);
 let lastPointerY = $state(0);
+
+let actionHistory = $state.raw([]);
+let actionHistorySize = $state(0);
+let actionHistoryPointer = $state(0);
+let currentAction = $state.raw(null);
 
 let configLoaded = $state(false);
 const config = $derived({
@@ -116,16 +124,23 @@ function generateStroke(stroke) {
 }
 
 function erase(minX, minY, maxX, maxY) {
+	const subactions = [];
 	for (const stroke of bush.search({minX, minY, maxX, maxY})) {
 		const newStrokes = eraseStroke(stroke, minX, minY, maxX, maxY);
 		if (newStrokes === null) continue;
 		if (!eraseWholeStroke) for (const newStroke of newStrokes) {
-			newStroke.order = orderMaintenance.addNewAfter(stroke.order);
+			subactions.push({isAddition: true, stroke: newStroke, previousOrder: stroke.order});
+			newStroke.order = orderMaintenance.addAfter(stroke.order);
 			generateStroke(newStroke);
 			bush.insert(newStroke);
 		}
+		subactions.push({isAddition: false, stroke, previousOrder: stroke.order.previous});
 		bush.remove(stroke);
 		orderMaintenance.remove(stroke.order);
+	}
+	if (subactions.length !== 0) {
+		if (currentAction === null) currentAction = {type: "erase", subactions};
+		else currentAction.subactions.push(...subactions);
 	}
 }
 
@@ -207,12 +222,16 @@ function onOpenWhiteboard() {
 		orderMaintenance = new OrderMaintenance();
 		offsetX = 0;
 		offsetY = 0;
+		actionHistory = [];
+		actionHistorySize = 0;
+		actionHistoryPointer = 0;
+		currentAction = null;
 		for (const strokeData of data) {
 			strokeData.isFinal = true;
 			if (!strokeData.isSimple) for (const segment of strokeData.spline) {
 				segment.bezier = new Bezier(segment.bezier);
 			}
-			strokeData.order = orderMaintenance.addNewAfter(orderMaintenance.tail);
+			strokeData.order = orderMaintenance.addAfter(orderMaintenance.tail);
 			generateStroke(strokeData);
 			bush.insert(strokeData);
 		}
@@ -286,6 +305,71 @@ function onExportWhiteboard() {
 	downloadFile(svg, "svg");
 }
 
+function addActionToHistory(action) {
+	actionHistory.splice(actionHistoryPointer);
+	actionHistory.push(action);
+	if (actionHistory.length > HISTORY_LIMIT) actionHistory.shift();
+	actionHistorySize = actionHistory.length;
+	actionHistoryPointer = actionHistory.length;
+}
+
+function performUndo() {
+	if (actionHistoryPointer === 0) return;
+	--actionHistoryPointer;
+	const action = actionHistory[actionHistoryPointer];
+	switch (action.type) {
+		case "draw": {
+			bush.remove(action.stroke);
+			orderMaintenance.remove(action.stroke.order);
+			break;
+		}
+		case "erase": {
+			for (let i = action.subactions.length - 1; i >= 0; --i) {
+				const subaction = action.subactions[i];
+				if (subaction.isAddition) {
+					bush.remove(subaction.stroke);
+					orderMaintenance.remove(subaction.stroke.order);
+				} else {
+					orderMaintenance.addAfter(subaction.previousOrder, subaction.stroke.order);
+					bush.insert(subaction.stroke);
+				}
+			}
+			break;
+		}
+		default:
+			throw new Error("Unknown history action.");
+	}
+	render();
+}
+
+function performRedo() {
+	if (actionHistoryPointer === actionHistoryPointer.length) return;
+	const action = actionHistory[actionHistoryPointer];
+	++actionHistoryPointer;
+	switch (action.type) {
+		case "draw": {
+			orderMaintenance.addAfter(orderMaintenance.tail, action.stroke.order);
+			bush.insert(action.stroke);
+			break;
+		}
+		case "erase": {
+			for (const subaction of action.subactions) {
+				if (subaction.isAddition) {
+					orderMaintenance.addAfter(subaction.previousOrder, subaction.stroke.order);
+					bush.insert(subaction.stroke);
+				} else {
+					bush.remove(subaction.stroke);
+					orderMaintenance.remove(subaction.stroke.order);
+				}
+			}
+			break;
+		}
+		default:
+			throw new Error("Unknown history action.");
+	}
+	render();
+}
+
 const handlers = {
 	draw: {
 		pointerdown: (event, pointerX, pointerY, pressure) => {
@@ -315,13 +399,13 @@ const handlers = {
 		},
 		pointerup: (event, pointerX, pointerY) => {
 			currentStroke.isFinal = true;
-			currentStroke.order = orderMaintenance.addNewAfter(orderMaintenance.tail);
+			currentStroke.order = orderMaintenance.addAfter(orderMaintenance.tail);
 			const stroke = currentStroke;/*{
 				isDraft: false,
 				size: drawSize,
 				color: drawColor,
 				basePath: currentStroke.basePath,
-				order: orderMaintenance.addNewAfter(orderMaintenance.tail)
+				order: orderMaintenance.addAfter(orderMaintenance.tail)
 			};
 			*/
 			/*
@@ -336,6 +420,7 @@ const handlers = {
 			*/
 			generateStroke(stroke);
 			bush.insert(stroke);
+			addActionToHistory({type: "draw", stroke});
 			currentStroke = null;
 			render();
 			renderActiveStroke();
@@ -363,6 +448,10 @@ const handlers = {
 			render();
 		},
 		pointerup: (event, pointerX, pointerY) => {
+			if (currentAction !== null) {
+				addActionToHistory(currentAction);
+				currentAction = null;
+			}
 		}
 	},
 	pan: {
@@ -422,6 +511,7 @@ onMount(() => {
 		) return;
 		event.preventDefault();
 		document.activeElement.blur();
+		if (pointerDown) currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 		pointerDown = true;
 		[lastPointerX, lastPointerY] = scaledPointerOffset(event);
 		const pressure = event.pointerType === "pen" ? event.pressure : 1;
@@ -473,6 +563,10 @@ onMount(() => {
 			orderMaintenance = new OrderMaintenance();
 			offsetX = 0;
 			offsetY = 0;
+			actionHistory = [];
+			actionHistorySize = 0;
+			actionHistoryPointer = 0;
+			currentAction = null;
 			pageBackground.render(offsetX, offsetY);
 			render();
 			renderActiveStroke();
@@ -520,10 +614,9 @@ canvas {
 	top: 0;
 	width: 100dvw;
 	height: 100dvh;
-	padding: 6rem 1rem 1rem 1rem;
+	padding-top: 6rem;
 	display: flex;
 	flex-direction: column;
-	gap: 1rem;
 	pointer-events: none;
 	user-select: none;
 }
@@ -533,6 +626,7 @@ canvas {
 	min-height: 0;
 	position: relative;
 	container: sideControls / size;
+	padding: 0 1rem;
 }
 
 .sideControls {
@@ -553,11 +647,17 @@ canvas {
 	align-self: stretch;
 	display: flex;
 	flex-direction: row;
-	justify-content: center;
+	align-items: end;
 	gap: 1em;
+	padding: 1em;
+	overflow-x: auto;
 }
 
-.enabledControls > :global(*) {
+.bottomControlsSide {
+	flex: 1;
+}
+
+.enabledControls > :global(:nth-child(2)), .enabledControls > .bottomControlsSide > :global(div) {
 	pointer-events: auto;
 }
 </style>
@@ -569,7 +669,7 @@ canvas {
 	class={{disabledMenu: pointerDown}}
 	onOpenWhiteboard={onOpenWhiteboard} onSaveWhiteboard={onSaveWhiteboard} onExportWhiteboard={onExportWhiteboard}
 />
-<div class="controls">
+<div class=controls>
 	<div class=sideControlsContainer>
 		<div class={{sideControls: true, wrappingSideControls: currentMode === "draw", enabledControls: !pointerDown}}>
 			{#if currentMode === "draw"}
@@ -582,10 +682,18 @@ canvas {
 		</div>
 	</div>
 	<div class={{bottomControls: true, enabledControls: !pointerDown}}>
+		<div class=bottomControlsSide>
+			<UndoRedoButtons
+				canUndo={actionHistoryPointer !== 0}
+				canRedo={actionHistoryPointer !== actionHistory.length}
+				onUndo={performUndo} onRedo={performRedo}
+			/>
+		</div>
 		<ControlGroup items={[
 			{key: "draw", text: "Draw"},
 			{key: "erase", text: "Erase"},
 			{key: "pan", text: "Pan"}
 		]} activeItem={currentMode} onSelect={onModeSelect}/>
+		<div class=bottomControlsSide></div>
 	</div>
 </div>
