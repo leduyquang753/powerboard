@@ -557,25 +557,42 @@ onMount(() => {
 		event.preventDefault();
 	});
 	document.addEventListener("keydown", event => {
-		if (event.key === "Delete") {
-			bush.clear();
-			currentStroke = null;
-			orderMaintenance = new OrderMaintenance();
-			offsetX = 0;
-			offsetY = 0;
-			actionHistory = [];
-			actionHistorySize = 0;
-			actionHistoryPointer = 0;
-			currentAction = null;
-			pageBackground.render(offsetX, offsetY);
-			render();
-			renderActiveStroke();
-		} else if (event.key === " ") {
-			offsetX = 0;
-			offsetY = 0;
-			pageBackground.render(offsetX, offsetY);
-			render();
-			renderActiveStroke();
+		switch (event.key) {
+			case "Delete": {
+				bush.clear();
+				currentStroke = null;
+				orderMaintenance = new OrderMaintenance();
+				offsetX = 0;
+				offsetY = 0;
+				actionHistory = [];
+				actionHistorySize = 0;
+				actionHistoryPointer = 0;
+				currentAction = null;
+				pageBackground.render(offsetX, offsetY);
+				render();
+				renderActiveStroke();
+				break;
+			}
+			case " ": {
+				offsetX = 0;
+				offsetY = 0;
+				pageBackground.render(offsetX, offsetY);
+				render();
+				renderActiveStroke();
+				break;
+			}
+			case "z": {
+				if (!event.getModifierState("Control")) break;
+				event.preventDefault();
+				performUndo();
+				break;
+			}
+			case "y": {
+				if (!event.getModifierState("Control")) break;
+				event.preventDefault();
+				performRedo();
+				break;
+			}
 		}
 	});
 	window.addEventListener("resize", event => {
