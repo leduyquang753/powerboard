@@ -674,7 +674,9 @@ canvas {
 	flex: 1;
 }
 
-.enabledControls > :global(:nth-child(2)), .enabledControls > .bottomControlsSide > :global(div) {
+.sideControls.enabledControls > :global(*),
+.bottomControls.enabledControls > :global(:nth-child(2)),
+.bottomControls.enabledControls > .bottomControlsSide > :global(div) {
 	pointer-events: auto;
 }
 </style>
