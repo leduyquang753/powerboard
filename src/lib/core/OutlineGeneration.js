@@ -3,6 +3,7 @@ import {Bezier} from "bezier-js";
 import {findBezierCriticalPoints} from "./BezierCriticalPointFinder.js";
 
 const DISCONNECTION_THRESHOLD = 1e-6;
+const COLLINEAR_THRESHOLD = 1e-6;
 
 function bezierBeginTangent(bezier) {
 	const points = bezier.points;
@@ -28,6 +29,43 @@ function bezierEndTangent(bezier) {
 
 function normalVector(vector) {
 	return [-vector[1], vector[0]];
+}
+
+function solveQuadratic(a, b, c) {
+	if (a === 0) return b === 0 ? [] : [-c/b];
+	const d = b*b - 4*a*c;
+	if (d < 0) return [];
+	if (d === 0) return [b / a / -2];
+	const sqrtD = Math.sqrt(d);
+	return [(b + sqrtD) / a / -2, (b - sqrtD) / a / -2];
+}
+
+function pointsAreCollinear(a, b, c) {
+	const dx1 = b.x - a.x;
+	const dy1 = b.y - a.y;
+	const dx2 = c.x - a.x;
+	const dy2 = c.y - a.y;
+	// Magnitude of cross product is very small compared to absolute value of dot product.
+	return Math.abs(dx1*dy2 - dy1*dx2) / Math.abs(dx1*dy1 + dx2*dy2) < COLLINEAR_THRESHOLD;
+}
+
+// When the cubic Bezier curve is approximately a straight line (all control points are collinear), find t values where
+// the curve changes direction.
+function findStraightLineTurns(points) {
+	if (!pointsAreCollinear(points[0], points[1], points[2]) || !pointsAreCollinear(points[1], points[2], points[3]))
+		return [];
+	const [a, b, c, d] = Math.abs(points[3].x - points[0].x) > Math.abs(points[3].y - points[0].y)
+		? points.map(p => p.x)
+		: points.map(p => p.y);
+	const ba = b - a;
+	const cb = c - b;
+	const dc = d - c;
+	// Solve for B'(t) = 3(1 - t)²(b - a) + 6(1 - t)t(c - b) + 3t²(d - c) = 0.
+	return solveQuadratic(
+		3*ba - 6*cb + 3*dc,
+		-6*ba + 6*cb,
+		3*ba
+	).filter(t => t > 0 && t < 1);
 }
 
 function updateBoundingBox(current, incomingMinX, incomingMinY, incomingMaxX, incomingMaxY) {
@@ -215,26 +253,47 @@ export function generateOutlineAndBoundingBox(stroke) {
 		const {bezier, startWeight, endWeight} = segment;
 		const startOffset = startWeight * halfStrokeSize;
 		const endOffset = endWeight * halfStrokeSize;
-		const ts = [
-			0, ...findBezierCriticalPoints(bezier.points.map(p => [p.x, p.y]), startOffset, endOffset), 1
-		].filter((t, i, a) => i === 0 || t !== a[i - 1]);
+		// If this happens, chances are the current and previous segments make a sharp turn.
+		// Render them separately to reduce ugly artifacts.
+		if (bezier.points[0].x === bezier.points[1].x && bezier.points[0].y === bezier.points[1].y)
+			processed.push(null);
+		const criticalTs = [
+			{t: 0, isTurn: false},
+			{t: 1, isTurn: false},
+			...findBezierCriticalPoints(bezier.points.map(p => [p.y, p.y]), startOffset, endOffset)
+				.map(t => ({t, isTurn: false})),
+			...findStraightLineTurns(bezier.points).map(t => ({t, isTurn: true}))
+		].sort((a, b) => a.t - b.t).filter((entry, i, a) => i === 0 || entry.t !== a[i - 1].t);
 		let lastStart = null;
 		let lastEnd = null;
-		for (let i = 1; i < ts.length; ++i) {
-			const m = (ts[i - 1] + ts[i]) / 2;
-			const offset = startOffset + (endOffset - startOffset) * m;
-			const curvature = bezier.curvature(m);
-			if (curvature.k !== 0 && Math.abs(curvature.r) < offset) {
-				if (lastStart !== null) processed.push(processSubsegment(segment, halfStrokeSize, lastStart, lastEnd));
-				if (i === 1 || lastStart !== null) processed.push(null);
+		for (let i = 1; i < criticalTs.length; ++i) {
+			const entry = criticalTs[i];
+			if (entry.isTurn) {
+				if (lastStart != null)
+					processed.push(processSubsegment(segment, halfStrokeSize, lastStart, entry.t));
 				lastStart = null;
 				lastEnd = null;
 			} else {
-				if (lastStart === null) lastStart = ts[i - 1];
-				lastEnd = ts[i];
+				const previousT = criticalTs[i - 1].t;
+				const m = (previousT + entry.t) / 2;
+				const offset = startOffset + (endOffset - startOffset) * m;
+				const curvature = bezier.curvature(m);
+				if (curvature.k !== 0 && Math.abs(curvature.r) < offset) {
+					if (lastStart !== null)
+						processed.push(processSubsegment(segment, halfStrokeSize, lastStart, lastEnd));
+					if (i === 1 || lastStart !== null) processed.push(null);
+					lastStart = null;
+					lastEnd = null;
+				} else {
+					if (lastStart === null) lastStart = previousT;
+					lastEnd = entry.t;
+				}
 			}
 		}
 		if (lastStart !== null) processed.push(processSubsegment(segment, halfStrokeSize, lastStart, lastEnd));
+		// Handle possible sharp turn between the current and next segments.
+		if (bezier.points[2].x === bezier.points[3].x && bezier.points[2].y === bezier.points[3].y)
+			processed.push(null);
 		segment.processed = processed;
 	}
 	let pathString = "";

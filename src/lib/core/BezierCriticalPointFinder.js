@@ -264,6 +264,5 @@ export function findBezierCriticalPoints(bezier, sa, sb) {
 	tn.pop();
 	tn.shift();
 	for (const t of tn) if (Math.abs(t) >= EPSILON && Math.abs(t - 1) >= EPSILON) result.push(t);
-	result.sort((a, b) => a - b);
 	return result;
 }
