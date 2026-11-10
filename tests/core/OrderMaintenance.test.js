@@ -1,6 +1,6 @@
 import {assert, test} from "vitest";
 
-import OrderMaintenance from "$lib/core/OrderMaintenance.js";
+import OrderMaintenance from "#lib/core/OrderMaintenance.js";
 
 test("Should maintain order when added sequentially", () => {
 	const orderMaintenance = new OrderMaintenance();

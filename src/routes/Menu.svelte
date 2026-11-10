@@ -6,7 +6,7 @@ import IconMenu from "~icons/material-symbols/menu";
 import IconSaveRounded from "~icons/material-symbols/save-rounded";
 import IconSettingsRounded from "~icons/material-symbols/settings-rounded";
 
-import {activateButtonFromKeyboard} from "$lib/utils/ButtonActivation.js";
+import {activateButtonFromKeyboard} from "#lib/utils/ButtonActivation.js";
 
 const {
 	"class": classes,

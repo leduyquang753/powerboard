@@ -3,11 +3,11 @@ import {Bezier} from "bezier-js";
 import RBush from "rbush";
 import {onMount, untrack} from "svelte";
 
-import {LineSimplifier} from "$lib/core/LineSimplification.js";
-import OrderMaintenance from "$lib/core/OrderMaintenance.js";
-import {generateOutlineAndBoundingBox} from "$lib/core/OutlineGeneration.js";
-import PageBackground from "$lib/core/PageBackground.js";
-import {eraseStroke} from "$lib/core/StrokeErasure.js";
+import {LineSimplifier} from "#lib/core/LineSimplification.js";
+import OrderMaintenance from "#lib/core/OrderMaintenance.js";
+import {generateOutlineAndBoundingBox} from "#lib/core/OutlineGeneration.js";
+import PageBackground from "#lib/core/PageBackground.js";
+import {eraseStroke} from "#lib/core/StrokeErasure.js";
 
 import ControlGroup from "./ControlGroup.svelte";
 import DrawOptions from "./DrawOptions.svelte";
@@ -514,7 +514,7 @@ onMount(() => {
 		if (pointerDown) currentHandlers.pointerup(event, ...scaledPointerOffset(event));
 		pointerDown = true;
 		[lastPointerX, lastPointerY] = scaledPointerOffset(event);
-		const pressure = event.pointerType === "pen" ? event.pressure : 1;
+		const pressure = event.pointerType === "pen" ? event.pressure * 0.7 + 0.3 : 1;
 		let handlerName;
 		switch (currentMode) {
 			case "draw":
@@ -541,7 +541,7 @@ onMount(() => {
 		if (pointerX === lastPointerX && pointerY === lastPointerY) return;
 		lastPointerX = pointerX;
 		lastPointerY = pointerY;
-		const pressure = event.pointerType === "pen" ? event.pressure : 1;
+		const pressure = event.pointerType === "pen" ? event.pressure * 0.7 + 0.3 : 1;
 		currentHandlers.pointermove(event, lastPointerX, lastPointerY, pressure);
 	});
 	document.addEventListener("pointerup", event => {

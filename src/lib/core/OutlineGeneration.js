@@ -68,6 +68,224 @@ function findStraightLineTurns(points) {
 	).filter(t => t > 0 && t < 1);
 }
 
+const add = (x,y) => x.map((e,i)=>e+y[i]);
+const sub = (x,y) => x.map((e,i)=>e-y[i]);
+const mul = (x,s) => x.map(e=>e*s);
+const dot = (x,y) => x.map((e,i)=>e*y[i]).reduce((s,t)=>s+t);
+const dist2 = (x,y) => x.map((e,i)=>(e-y[i])**2).reduce((a,b)=>a+b);
+const midp = (x,y) => x.map((e,i)=>(e+y[i])/2);
+const cross = (x,y) => x[0]*y[1] - x[1]*y[0];
+const mirror = (x,across) => across.map((e,i)=>2*e-x[i]);
+const hodograph = b => b.slice(1).map((e,i) => mul(sub(e,b[i]),b.length-1));
+
+function deCasteljauSplit(bezier) {
+	const n = bezier.length - 1;
+	const back = Array(bezier.length);
+	back[n] = bezier[n];
+	for (let i = 1; i <= n; ++i) {
+		for (let j = n; j >= i; --j) {
+			bezier[j] = midp(bezier[j], bezier[j-1]);
+		}
+		back[n-i] = bezier[n];
+	}
+	return back;
+}
+
+function convexHullContainsOrigin(pts) {
+	let l = false, r = false;
+	for(let low of pts)
+		if (low[1] < 0) {
+			for(let high of pts) if (high[1] > 0) {
+				const x = cross(low,high);
+				l |= x <= 0;
+				r |= x >= 0;
+			}
+		} else if (low[1] == 0) {
+			l |= low[0] <= 0;
+			r |= low[0] >= 0;
+		}
+	return l && r;
+}
+
+function minimizeStrainHermite(p0,v0,v1,p1) {
+	// See https://doi.org/10.1016/j.cagd.2003.08.003
+	// input: cubic hermite polynomial: endpoints and tangent directions
+	// output: scalars to multiply v0 and v1 by to minimize strain
+	let p10 = sub(p1,p0);
+	let v00 = dot(v0,v0), v11 = dot(v1,v1), v01 = dot(v0,v1), pv0 = dot(p10,v0), pv1 = dot(p10,v1);
+	let a0 = (6*pv0*v11 - 3*pv1*v01) / (4*v00*v11 - v01**2);
+	let a1 = (6*pv1*v00 - 3*pv0*v01) / (4*v00*v11 - v01**2);
+	return [a0,a1];
+}
+
+function minimizeStrainBezier(p0,pa,pb,p1) {
+	// input: cubic Bézier control points
+	// output: adjusted p1,p2 to minimize strain
+	let v0 = sub(pa,p0), v1=sub(pb,p1);
+	let [a0,a1] = minimizeStrainHermite(p0,v0,v1,p1);
+	return [add(p0,mul(v0, Math.abs(a0)/3)), add(p1, mul(v1, Math.abs(a1)/3))]
+}
+
+function getSidePointsAndDerivatives(xyr, h) {
+	const n = xyr.length-1;
+	// points
+	const H = [h[0],h[n-1]]
+	const a = H.map(e=>e.slice(0,2));
+	const ell = a.map(e=>dot(e,e));
+	const Hr2 = H.map(e=>e[2]**2);
+	const bad = ell.map((e,i) => e==0 || e<Hr2[i]);
+	if (bad[0]) ell[0] = Hr2[0]+0.001;
+	if (bad[1]) ell[1] = Hr2[1]+0.001;
+	const p = [xyr[0], xyr[n]].map(e=>e.slice(0,2));
+	const r = [xyr[0], xyr[n]].map(e=>e[2]);
+	const s = a.map(e=>[-e[1], e[0]]);
+	const am = H.map((e,i)=>-e[2]/ell[i]);
+	const sm = ell.map((e,i)=>(e - Hr2[i])**0.5/e);
+
+	// build the result
+	const p_a = p.map((e,i)=>add(e, mul(a[i], am[i]*r[i])));
+	const ss = s.map((e,i)=>mul(e,	sm[i]*r[i]));
+	const pts = p_a.map((e,i)=>[add(e, ss[i]), sub(e, ss[i])]);
+
+	// non-normalized derivatives: perpendicular of vector to circle centers
+	const deriv = pts.map((end,i) => end.map(pt => sub(pt,p[i])).map(w=>[-w[1],w[0]]))
+
+	// remove bad data
+	if (bad[0]) { pts[0] = false; deriv[0] = false; }
+	if (bad[1]) { pts[1] = false; deriv[0] = false; }
+
+	// scale derivatives to minimize strain
+	if (!bad[0] && !bad[1]) {
+		for(let side=0; side<2; side+=1) {
+			let [a0,a1] = minimizeStrainHermite(pts[0][side], deriv[0][side], deriv[1][side], pts[1][side]);
+			deriv[0][side] = mul(deriv[0][side], a0/3);
+			deriv[1][side] = mul(deriv[1][side], a1/3);
+		}
+	}
+
+	return [pts,deriv] // [[[left,right],[left,right]], [[dleft,dright],[dleft,dright]]]
+}
+
+function processIntoSubsegments(segment, halfStrokeSize) {
+	const bezier = segment.bezier;
+	const startSize = halfStrokeSize * segment.startWeight;
+	const endSize = halfStrokeSize * segment.endWeight;
+	let xyr = [
+		[bezier.points[0].x, bezier.points[0].y, startSize],
+		[bezier.points[1].x, bezier.points[1].y, startSize + (endSize - startSize) / 3],
+		[bezier.points[2].x, bezier.points[2].y, endSize - (endSize - startSize) / 3],
+		[bezier.points[3].x, bezier.points[3].y, endSize]
+	];
+	const bq = [];
+	const pendingIntervals = [];
+	let h = hodograph(xyr);
+	let [[p,q],[hp,hq]] = getSidePointsAndDerivatives(xyr, h);
+	let gap = Math.max(xyr[0][2], xyr[3][2])**2;
+	let tipgap = gap / 5**2;
+
+	const ll = [];
+	const rl = [];
+	const intervals = [];
+	if (p) {
+		ll.push([p[0]]);
+		rl.push([p[1]]);
+		intervals.push([0]);
+	}
+
+	let tStart = 0;
+	let tEnd = 1;
+	while(true) {
+		let advance = true;
+		if (Math.max(...h.map(e => dot(e,e))) > gap) { // large motion, force recursion
+			advance = false;
+		} else if (!p && q && dist2(q[0],q[1]) < tipgap) {
+			// open a segment
+			ll.push(null, [q[0]]);
+			rl.push(null, [q[1]]);
+			intervals.push(null, [tEnd, null]);
+		} else if (!q && p && dist2(p[0], p[1]) < tipgap) {
+			// close a segment (nothing to do)
+		} else if (!p && !q) {
+			// between intervals (no work needed)
+		} else if (convexHullContainsOrigin(h)) {
+			if (Math.max(...h.map(e => dot(e,e))) < 0.5) { // 0.5 for "half a pixel"; maybe change?
+				// found bowtie
+				if (q) { // open a segment
+					ll.push(null, [q[0]]);
+					rl.push(null, [q[1]]);
+					intervals.push(null, [tEnd, null]);
+				}
+			} else {
+				advance = false;
+			}
+		} else if (p && q && dist2(p[0],q[0]) < gap && dist2(p[1],q[1]) < gap) {
+			ll[ll.length-1].push(add(p[0],hp[0]));
+			ll[ll.length-1].push(sub(q[0],hq[0])); // add tangent
+			ll[ll.length-1].push(q[0]); // extend segment
+			rl[rl.length-1].push(add(p[1],hp[1]));
+			rl[rl.length-1].push(sub(q[1],hq[1])); // add tangent
+			rl[rl.length-1].push(q[1]); // extend segment
+			intervals[intervals.length - 1][1] = tEnd;
+		} else { // too big a gap; subdivide
+			advance = false;
+		}
+		if (advance) {
+			if (!bq.length) break;
+			xyr = bq.pop();
+			[tStart, tEnd] = pendingIntervals.pop();
+			h = hodograph(xyr);
+			[[p,q],[hp,hq]] = getSidePointsAndDerivatives(xyr, h);
+			gap = Math.max(xyr[0][2], xyr[3][2])**2;
+			tipgap = gap / 5**2;
+		} else { // subdivide
+			bq.push(deCasteljauSplit(xyr));
+			const tMiddle = tStart + (tEnd - tStart) / 2;
+			pendingIntervals.push([tMiddle, tEnd]);
+			tEnd = tMiddle;
+			h = hodograph(xyr);
+			[[p,q],[hp,hq]] = getSidePointsAndDerivatives(xyr, h);
+		}
+	}
+	if (!q) {
+		ll.push(null);
+		rl.push(null);
+		intervals.push(null);
+	}
+	const subsegments = [];
+	for (let i = 0; i < intervals.length; ++i) {
+		const interval = intervals[i];
+		if (interval === null || interval[1] === null) {
+			subsegments.push(null);
+			continue;
+		}
+		const [startT, endT] = interval;
+		const forwardPoints = ll[i];
+		const reversePoints = rl[i];
+		const subBezier = bezier.split(startT, endT);
+		const startOffset = (segment.startWeight + (segment.endWeight - segment.startWeight) * startT) * halfStrokeSize;
+		const endOffset = (segment.startWeight + (segment.endWeight - segment.startWeight) * endT) * halfStrokeSize;
+		let forwardPath = "C";
+		for (let j = 1; j < forwardPoints.length; ++j)
+			forwardPath += ` ${forwardPoints[j][0]} ${forwardPoints[j][1]}`;
+		let reversePath = "C";
+		for (let j = reversePoints.length - 2; j >= 0; --j)
+			reversePath += ` ${reversePoints[j][0]} ${reversePoints[j][1]}`;
+		const subBezierBoundingBox = subBezier.bbox();
+		const halfMaxOffset = Math.max(startOffset, endOffset) / 2;
+		subsegments.push({
+			bezier: subBezier,
+			startOffset, endOffset, forwardPath, reversePath,
+			boundingBox: {
+				minX: subBezierBoundingBox.x.min - halfMaxOffset,
+				minY: subBezierBoundingBox.y.min - halfMaxOffset,
+				maxX: subBezierBoundingBox.x.max + halfMaxOffset,
+				maxY: subBezierBoundingBox.y.max + halfMaxOffset
+			}
+		});
+	}
+	return subsegments;
+}
+
 function updateBoundingBox(current, incomingMinX, incomingMinY, incomingMaxX, incomingMaxY) {
 	current.minX = Math.min(current.minX, incomingMinX);
 	current.minY = Math.min(current.minY, incomingMinY);
@@ -139,6 +357,7 @@ function processSubsegment(segment, halfStrokeSize, startT, endT) {
 		lastPoint.x + halfStrokeSize,
 		lastPoint.y + halfStrokeSize
 	);
+
 
 	let forwardPath = "";
 	let lastT = 0;
@@ -257,40 +476,13 @@ export function generateOutlineAndBoundingBox(stroke) {
 		// Render them separately to reduce ugly artifacts.
 		if (bezier.points[0].x === bezier.points[1].x && bezier.points[0].y === bezier.points[1].y)
 			processed.push(null);
-		const criticalTs = [
-			{t: 0, isTurn: false},
-			{t: 1, isTurn: false},
-			...findBezierCriticalPoints(bezier.points.map(p => [p.y, p.y]), startOffset, endOffset)
-				.map(t => ({t, isTurn: false})),
-			...findStraightLineTurns(bezier.points).map(t => ({t, isTurn: true}))
-		].sort((a, b) => a.t - b.t).filter((entry, i, a) => i === 0 || entry.t !== a[i - 1].t);
-		let lastStart = null;
-		let lastEnd = null;
-		for (let i = 1; i < criticalTs.length; ++i) {
-			const entry = criticalTs[i];
-			if (entry.isTurn) {
-				if (lastStart != null)
-					processed.push(processSubsegment(segment, halfStrokeSize, lastStart, entry.t));
-				lastStart = null;
-				lastEnd = null;
+		for (const subsegment of processIntoSubsegments(segment, halfStrokeSize)) {
+			if (subsegment === null) {
+				if (processed.length !== 0 && processed[processed.length - 1] !== null) processed.push(null);
 			} else {
-				const previousT = criticalTs[i - 1].t;
-				const m = (previousT + entry.t) / 2;
-				const offset = startOffset + (endOffset - startOffset) * m;
-				const curvature = bezier.curvature(m);
-				if (curvature.k !== 0 && Math.abs(curvature.r) < offset) {
-					if (lastStart !== null)
-						processed.push(processSubsegment(segment, halfStrokeSize, lastStart, lastEnd));
-					if (i === 1 || lastStart !== null) processed.push(null);
-					lastStart = null;
-					lastEnd = null;
-				} else {
-					if (lastStart === null) lastStart = previousT;
-					lastEnd = entry.t;
-				}
+				processed.push(subsegment);
 			}
 		}
-		if (lastStart !== null) processed.push(processSubsegment(segment, halfStrokeSize, lastStart, lastEnd));
 		// Handle possible sharp turn between the current and next segments.
 		if (bezier.points[2].x === bezier.points[3].x && bezier.points[2].y === bezier.points[3].y)
 			processed.push(null);

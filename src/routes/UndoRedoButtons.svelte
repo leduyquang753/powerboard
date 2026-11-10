@@ -1,5 +1,5 @@
 <script>
-import {activateButtonFromKeyboard} from "$lib/utils/ButtonActivation.js";
+import {activateButtonFromKeyboard} from "#lib/utils/ButtonActivation.js";
 
 import IconRedoRounded from "~icons/material-symbols/redo-rounded";
 import IconUndoRounded from "~icons/material-symbols/undo-rounded";

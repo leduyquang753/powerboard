@@ -1,7 +1,7 @@
 <script>
-import {activateButtonFromKeyboard} from "$lib/utils/ButtonActivation.js";
+import {activateButtonFromKeyboard} from "#lib/utils/ButtonActivation.js";
 
-//import Slider from "$controls/Slider.svelte";
+//import Slider from "#controls/Slider.svelte";
 
 import IconChevronLeftRounded from "~icons/material-symbols/chevron-left-rounded";
 import IconStarOutlineRounded from "~icons/material-symbols/star-outline-rounded";

@@ -1,5 +1,5 @@
 <script>
-import {activateButtonFromKeyboard} from "$lib/utils/ButtonActivation.js";
+import {activateButtonFromKeyboard} from "#lib/utils/ButtonActivation.js";
 
 import IconReset from "~icons/powerboard-icons/reset";
 

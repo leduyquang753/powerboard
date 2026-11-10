@@ -1,9 +1,9 @@
 <script>
 import ColorPicker from "svelte-awesome-color-picker";
 
-import {activateButtonFromKeyboard} from "$lib/utils/ButtonActivation.js";
+import {activateButtonFromKeyboard} from "#lib/utils/ButtonActivation.js";
 
-//import Slider from "$controls/Slider.svelte";
+//import Slider from "#controls/Slider.svelte";
 
 import IconChevronLeftRounded from "~icons/material-symbols/chevron-left-rounded";
 import IconStarOutlineRounded from "~icons/material-symbols/star-outline-rounded";
@@ -66,7 +66,7 @@ function removeDrawColorFromFavorites() {
 	box-shadow: 0 0 4px rgb(0 0 0 / 50%);
 }
 
-@container sideControls (height >= 25rem + 6px) {
+@container sideControls (height >= calc(25rem + 6px)) {
 	.controlGroup {
 		max-height: calc((100% - 1rem) / 2);
 	}
